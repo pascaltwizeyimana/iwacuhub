@@ -1,12 +1,2 @@
-# Fix Tailwind CSS Error in Client
-
-## Steps:
-- [ ] 1. Delete client/node_modules and package-lock.json
-- [ ] 2. npm cache clean --force in client/
-- [ ] 3. npm install in client/
-- [ ] 4. npm start in client/
-- [ ] 5. Install Tailwind CSS IntelliSense VSCode extension
-- [ ] 6. Verify no errors, lint fixed
-
-Progress: Starting step 1.
+# TODO: Update project to run on port 4000\n\n## Steps:\n- [x] Step 1: Update server/server.js port fallback to 4000\n- [x] Step 2: Update client/src/services/api.js baseURL to localhost:4000\n- [ ] Step 3: Test server with `cd server && npm run dev`\n- [ ] Step 4: Test client with `cd client && npm start`\n- [ ] Step 5: Mark complete and remove TODO.md
 

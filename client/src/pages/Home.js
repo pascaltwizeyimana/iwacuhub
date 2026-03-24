@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../services/api";
 import PostCard from "../components/PostCard";
 import Navbar from "../components/Navbar";
-import Stories from "../components/Stories";
+
 
 export default function Home() {
   const [posts, setPosts] = useState([]);
@@ -13,7 +13,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchPosts();
+    fetchPosts();  
   }, []);
 
   return (
