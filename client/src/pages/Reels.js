@@ -1,82 +1,102 @@
-import { useEffect, useState, useRef } from 'react';
-import { api } from '../services/api';
-import Navbar from '../components/Navbar';
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { FiHeart, FiMessageCircle, FiShare2, FiMusic, FiVolume2, FiVolumeX } from "react-icons/fi";
 
 export default function Reels() {
-  const [reels, setReels] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const videoRef = useRef(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [muted, setMuted] = useState(false);
+  const [liked, setLiked] = useState({});
 
-  useEffect(() => {
-    api.get('/api/videos').then(res => {
-      setReels(res.data);
-      // Auto-play first video
-      if (videoRef.current) videoRef.current.play();
-    });
-  }, []);
+  const reels = [
+    {
+      id: 1,
+      user: { name: "Rwanda Tourism", avatar: "🇷🇼", username: "@visitrwanda" },
+      video: "https://images.unsplash.com/photo-1584277261846-c6a3b6d3c9c3?w=400",
+      likes: "125K",
+      comments: "2.3K",
+      caption: "Explore the beauty of Rwanda! 🇷🇼",
+      music: "Rwandan Traditional Music",
+    },
+    {
+      id: 2,
+      user: { name: "Kigali Life", avatar: "🏙️", username: "@kigalilife" },
+      video: "https://images.unsplash.com/photo-1559128010-7c1ad6e1b6a5?w=400",
+      likes: "89K",
+      comments: "1.8K",
+      caption: "Modern Kigali at sunset 🌆",
+      music: "African Beats",
+    },
+  ];
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = 0;
-      video.play();
-    }
-  }, [currentIndex]);
-
-  const nextReel = () => {
-    setCurrentIndex((prev) => (prev + 1) % reels.length);
+  const handleLike = (id) => {
+    setLiked(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const prevReel = () => {
-    setCurrentIndex((prev) => (prev - 1 + reels.length) % reels.length);
-  };
-
-  if (reels.length === 0) return <div className="h-screen flex items-center justify-center">No Reels yet! 🇷🇼</div>;
-
-  const currentReel = reels[currentIndex];
+  if (!user) {
+    navigate("/login");
+    return null;
+  }
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden" onClick={nextReel}>
-      <Navbar />
-      <div className="flex items-center justify-center h-[100vh]">
-        <button onClick={prevReel} className="absolute left-4 z-10 bg-black/50 text-white p-3 rounded-full">
-          ←
-        </button>
-        
-        <div className="w-full h-full max-w-sm flex flex-col items-center justify-center">
-          <video
-            ref={videoRef}
-            src={currentReel.videos[0]} // First video
-            className="w-full h-[90vh] object-contain"
-            loop
-            muted
-            playsInline
+    <div className="min-h-screen bg-black pt-16">
+      {reels.map((reel, index) => (
+        <motion.div
+          key={reel.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="relative h-[calc(100vh-64px)] snap-start"
+        >
+          <img
+            src={reel.video}
+            alt={reel.caption}
+            className="w-full h-full object-cover"
           />
           
-          <div className="text-white absolute bottom-20 left-4 right-4">
-            <h3 className="text-xl font-bold">{currentReel.caption || '🇷🇼 Rwanda Reel'}</h3>
-            <p className="opacity-75">{currentReel.username}</p>
+          {/* Overlay Content */}
+          <div className="absolute bottom-20 left-4 right-20 text-white">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
+                <span className="text-xl">{reel.user.avatar}</span>
+              </div>
+              <div>
+                <p className="font-bold">{reel.user.name}</p>
+                <p className="text-sm text-white/80">{reel.user.username}</p>
+              </div>
+            </div>
+            <p className="mb-2">{reel.caption}</p>
+            <div className="flex items-center gap-1 text-sm text-white/80">
+              <FiMusic className="inline" />
+              <span>{reel.music}</span>
+            </div>
           </div>
-          
-          <div className="flex space-x-4 absolute right-4 bottom-24">
-            <button className="text-2xl">❤️</button>
-            <button className="text-2xl">💬</button>
-            <button className="text-2xl">↗️</button>
+
+          {/* Action Buttons */}
+          <div className="absolute bottom-20 right-4 space-y-6">
+            <button onClick={() => handleLike(reel.id)} className="flex flex-col items-center">
+              {liked[reel.id] ? (
+                <FiHeart className="w-8 h-8 text-red-500 fill-red-500 animate-pulse" />
+              ) : (
+                <FiHeart className="w-8 h-8 text-white" />
+              )}
+              <span className="text-xs text-white mt-1">{reel.likes}</span>
+            </button>
+            <button className="flex flex-col items-center">
+              <FiMessageCircle className="w-8 h-8 text-white" />
+              <span className="text-xs text-white mt-1">{reel.comments}</span>
+            </button>
+            <button className="flex flex-col items-center">
+              <FiShare2 className="w-8 h-8 text-white" />
+              <span className="text-xs text-white mt-1">Share</span>
+            </button>
+            <button onClick={() => setMuted(!muted)} className="flex flex-col items-center">
+              {muted ? <FiVolumeX className="w-8 h-8 text-white" /> : <FiVolume2 className="w-8 h-8 text-white" />}
+            </button>
           </div>
-        </div>
-        
-        <button onClick={nextReel} className="absolute right-4 z-10 bg-black/50 text-white p-3 rounded-full">
-          →
-        </button>
-      </div>
-      
-      {/* Mini map */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
-        {reels.map((_, i) => (
-          <div key={i} className={`w-2 h-2 rounded-full ${i === currentIndex ? 'bg-white' : 'bg-gray-500'}`} />
-        ))}
-      </div>
+        </motion.div>
+      ))}
     </div>
   );
 }
-

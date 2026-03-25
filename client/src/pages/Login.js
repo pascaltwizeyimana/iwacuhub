@@ -1,47 +1,184 @@
-import { useState, useContext } from "react";
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api";
-import { AuthContext } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext";
+import { motion } from "framer-motion";
+import { FiMail, FiLock, FiLogIn, FiArrowLeft } from "react-icons/fi";
 
-export default function Login({ navigate }) {
-  const { login } = useContext(AuthContext);
+export default function Login() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email || !password) {
+      setError("Please fill in all fields");
+      return;
+    }
+    
+    setLoading(true);
+    setError("");
+    
     try {
-      const res = await api.post("/auth/login", { email, password });
-      login(res.data.user, res.data.token);
-      navigate("/"); // redirect to home
+      console.log("Attempting login with:", email);
+      
+      // For demo purposes, accept demo credentials without backend
+      if (email === "demo@iwacuhub.com" && password === "demo123") {
+        const demoUser = {
+          id: 1,
+          username: "demo_user",
+          email: "demo@iwacuhub.com"
+        };
+        const demoToken = "demo-token-12345";
+        
+        login(demoUser, demoToken);
+        navigate("/");
+        return;
+      }
+      
+      // Try real API if backend is running
+      try {
+        const res = await api.post("/auth/login", { email, password });
+        if (res.data.success) {
+          login(res.data.user, res.data.token);
+          navigate("/");
+        } else {
+          setError("Login failed");
+        }
+      } catch (apiError) {
+        console.log("Backend not available, using demo mode");
+        // Fallback to demo if API fails
+        if (email === "demo@iwacuhub.com" && password === "demo123") {
+          const demoUser = {
+            id: 1,
+            username: "demo_user",
+            email: "demo@iwacuhub.com"
+          };
+          const demoToken = "demo-token-12345";
+          login(demoUser, demoToken);
+          navigate("/");
+        } else {
+          setError("Invalid credentials. Use demo@iwacuhub.com / demo123");
+        }
+      }
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed");
+      console.error("Login error:", err);
+      setError(err.response?.data?.message || "Invalid email or password");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-20 p-4 border rounded">
-      <h1 className="text-xl font-bold mb-4">Login</h1>
-      {error && <p className="text-red-500">{error}</p>}
-      <form onSubmit={handleLogin} className="flex flex-col space-y-2">
-        <input
-          type="email"
-          placeholder="Email"
-          className="border p-2"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          className="border p-2"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button type="submit" className="bg-blue-500 text-white p-2 rounded">
-          Login
-        </button>
-      </form>
+    <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-green-500 to-blue-600 flex items-center justify-center p-4">
+      {/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-20 left-10 w-64 h-64 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-pulse"></div>
+        <div className="absolute bottom-20 right-10 w-64 h-64 bg-green-400 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-pulse delay-2000"></div>
+      </div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: 50 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md w-full border border-white/20"
+      >
+        {/* Back button to homepage */}
+        <Link
+          to="/"
+          className="absolute top-4 left-4 text-white/70 hover:text-white transition p-2 rounded-lg hover:bg-white/20"
+        >
+          <FiArrowLeft className="w-5 h-5" />
+        </Link>
+
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-green-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"
+          >
+            <span className="text-4xl">🇷🇼</span>
+          </motion.div>
+          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
+          <p className="text-white/80">Sign in to continue to IwacuHub</p>
+        </div>
+
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-100 text-sm text-center"
+          >
+            {error}
+          </motion.div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="relative">
+            <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
+            <input
+              type="email"
+              placeholder="Email address"
+              className="w-full pl-10 pr-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="relative">
+            <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full pl-10 pr-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 text-white font-bold py-3 rounded-xl hover:shadow-xl transition-all disabled:opacity-50"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Logging in...
+              </div>
+            ) : (
+              <span className="flex items-center justify-center">
+                <FiLogIn className="mr-2" /> Sign In
+              </span>
+            )}
+          </motion.button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-white/70 text-sm">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-yellow-300 font-semibold hover:underline">
+              Create Account
+            </Link>
+          </p>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-white/20 text-center">
+          <p className="text-white/50 text-xs">
+            Demo: demo@iwacuhub.com / demo123
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }
