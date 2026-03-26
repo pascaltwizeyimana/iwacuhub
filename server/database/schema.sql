@@ -1,4 +1,4 @@
--- Create database
+-- Create database if not exists
 CREATE DATABASE IF NOT EXISTS iwacuhub_db;
 USE iwacuhub_db;
 
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS likes (
     INDEX idx_post_id (post_id)
 );
 
--- Followers table
+-- Follows table
 CREATE TABLE IF NOT EXISTS follows (
     id INT PRIMARY KEY AUTO_INCREMENT,
     follower_id INT NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     from_user_id INT NOT NULL,
-    type ENUM('like', 'comment', 'follow', 'mention', 'share') NOT NULL,
+    type ENUM('like', 'comment', 'follow', 'mention', 'share', 'message') NOT NULL,
     post_id INT DEFAULT NULL,
     comment_id INT DEFAULT NULL,
     message TEXT,
@@ -153,28 +153,27 @@ CREATE TABLE IF NOT EXISTS post_hashtags (
     UNIQUE KEY unique_post_hashtag (post_id, hashtag_id)
 );
 
--- Stories table (24-hour disappearing)
-CREATE TABLE IF NOT EXISTS stories (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    media_url VARCHAR(255) NOT NULL,
-    media_type ENUM('image', 'video') DEFAULT 'image',
-    caption TEXT,
-    views_count INT DEFAULT 0,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_expires_at (expires_at)
-);
+-- Insert sample hashtags
+INSERT INTO hashtags (name, posts_count) VALUES 
+('VisitRwanda', 12500),
+('KigaliCity', 8200),
+('GorillaTrekking', 5800),
+('RwandanCoffee', 3900),
+('Umuganda', 4200),
+('LakeKivu', 2800),
+('Nyungwe', 2500),
+('Akagera', 2100)
+ON DUPLICATE KEY UPDATE posts_count = posts_count;
 
--- Story views
-CREATE TABLE IF NOT EXISTS story_views (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    story_id INT NOT NULL,
-    user_id INT NOT NULL,
-    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_view (story_id, user_id),
-    FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+-- Insert demo user (password: demo123 - hashed with bcrypt)
+INSERT INTO users (username, email, password, full_name, is_verified, is_creator) 
+VALUES ('demo_user', 'demo@iwacuhub.com', '$2b$10$KQWHxaA6hnZD3SFBtK0QReYbNNQELZuSIJNNS6MPgVylE87Ca/Rre', 'Demo User', 1, 1)
+ON DUPLICATE KEY UPDATE username = username;
+
+-- Insert sample posts
+INSERT INTO posts (user_id, caption, media_url, media_type, location, hashtags, likes_count, comments_count, views_count) VALUES 
+(1, 'Discover the land of a thousand hills! 🌄 From volcanoes to savannahs, Rwanda has it all. #VisitRwanda #ExploreRwanda', 'https://images.unsplash.com/photo-1584277261846-c6a3b6d3c9c3?w=800', 'image', 'Volcanoes National Park', '#VisitRwanda #ExploreRwanda', 12500, 234, 45000),
+(1, 'Modern Kigali at sunset 🌆 Rwanda is rising! The cleanest city in Africa continues to amaze. #KigaliCity #RwandaRising', 'https://images.unsplash.com/photo-1559128010-7c1ad6e1b6a5?w=800', 'image', 'Kigali, Rwanda', '#KigaliCity #RwandaRising', 8900, 1800, 89000),
+(1, 'Incredible experience with these majestic creatures in Volcanoes National Park. #GorillaTrekking #Conservation', 'https://images.unsplash.com/photo-1543157144-f78c636d023d?w=800', 'video', 'Volcanoes National Park', '#GorillaTrekking #Conservation', 23400, 560, 1200000);
+
+SELECT 'Database setup complete!' as Status;
