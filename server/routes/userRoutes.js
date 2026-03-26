@@ -2,7 +2,6 @@ const express = require('express');
 const { pool } = require('../config/db');
 const router = express.Router();
 
-// Middleware to verify token
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -37,36 +36,30 @@ router.get('/:userId', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    res.json({ success: true, user: users[0] });
+    // Check if current user is following this user
+    let isFollowing = false;
+    if (req.headers.authorization) {
+      const token = req.headers.authorization.split(' ')[1];
+      if (token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'iwacuhub-secret-key-2024');
+          const [follow] = await pool.query(
+            'SELECT id FROM follows WHERE follower_id = ? AND following_id = ?',
+            [decoded.id, userId]
+          );
+          isFollowing = follow.length > 0;
+        } catch (e) {}
+      }
+    }
+    
+    res.json({ success: true, user: { ...users[0], is_following: isFollowing } });
   } catch (error) {
-    console.error('User fetch error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch user' });
   }
 });
 
-// Update user profile
-router.put('/profile', authenticateToken, async (req, res) => {
-  const { full_name, bio, location, website } = req.body;
-  
-  try {
-    await pool.query(
-      'UPDATE users SET full_name = ?, bio = ?, location = ?, website = ? WHERE id = ?',
-      [full_name, bio, location, website, req.userId]
-    );
-    
-    const [updatedUser] = await pool.query(
-      'SELECT id, username, full_name, bio, avatar, location, website, is_verified FROM users WHERE id = ?',
-      [req.userId]
-    );
-    
-    res.json({ success: true, user: updatedUser[0] });
-  } catch (error) {
-    console.error('Profile update error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update profile' });
-  }
-});
-
-// Follow a user
+// Follow/Unfollow a user
 router.post('/:userId/follow', authenticateToken, async (req, res) => {
   const { userId } = req.params;
   
@@ -93,9 +86,10 @@ router.post('/:userId/follow', authenticateToken, async (req, res) => {
       await pool.query('UPDATE users SET following_count = following_count + 1 WHERE id = ?', [req.userId]);
       
       // Create notification
+      const [user] = await pool.query('SELECT username FROM users WHERE id = ?', [req.userId]);
       await pool.query(
-        'INSERT INTO notifications (user_id, from_user_id, type) VALUES (?, ?, ?)',
-        [userId, req.userId, 'follow']
+        'INSERT INTO notifications (user_id, from_user_id, type, message) VALUES (?, ?, ?, ?)',
+        [userId, req.userId, 'follow', `${user[0].username} started following you`]
       );
       
       res.json({ success: true, following: true });
@@ -106,26 +100,88 @@ router.post('/:userId/follow', authenticateToken, async (req, res) => {
   }
 });
 
-// Get user's posts
-router.get('/:userId/posts', async (req, res) => {
+// Get user's followers
+router.get('/:userId/followers', async (req, res) => {
   const { userId } = req.params;
-  const { page = 1, limit = 10 } = req.query;
-  const offset = (page - 1) * limit;
   
   try {
-    const [posts] = await pool.query(`
-      SELECT p.*, u.username, u.full_name, u.avatar, u.is_verified
-      FROM posts p
-      JOIN users u ON p.user_id = u.id
-      WHERE p.user_id = ? AND p.is_active = TRUE
-      ORDER BY p.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [userId, parseInt(limit), parseInt(offset)]);
+    const [followers] = await pool.query(`
+      SELECT u.id, u.username, u.full_name, u.avatar, u.is_verified
+      FROM follows f
+      JOIN users u ON f.follower_id = u.id
+      WHERE f.following_id = ?
+      ORDER BY f.created_at DESC
+    `, [userId]);
     
-    res.json({ success: true, posts });
+    res.json({ success: true, followers });
   } catch (error) {
-    console.error('User posts error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch posts' });
+    res.status(500).json({ success: false, message: 'Failed to fetch followers' });
+  }
+});
+
+
+
+// Follow/Unfollow a user
+router.post('/:userId/follow', authenticateToken, async (req, res) => {
+  const { userId } = req.params;
+  
+  if (parseInt(userId) === req.userId) {
+    return res.status(400).json({ success: false, message: 'Cannot follow yourself' });
+  }
+  
+  try {
+    // Check if already following
+    const [existing] = await pool.query(
+      'SELECT id FROM follows WHERE follower_id = ? AND following_id = ?',
+      [req.userId, userId]
+    );
+    
+    if (existing.length > 0) {
+      // Unfollow
+      await pool.query('DELETE FROM follows WHERE follower_id = ? AND following_id = ?', [req.userId, userId]);
+      await pool.query('UPDATE users SET followers_count = followers_count - 1 WHERE id = ?', [userId]);
+      await pool.query('UPDATE users SET following_count = following_count - 1 WHERE id = ?', [req.userId]);
+      
+      console.log(`User ${req.userId} unfollowed ${userId}`);
+      res.json({ success: true, following: false });
+    } else {
+      // Follow
+      await pool.query('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)', [req.userId, userId]);
+      await pool.query('UPDATE users SET followers_count = followers_count + 1 WHERE id = ?', [userId]);
+      await pool.query('UPDATE users SET following_count = following_count + 1 WHERE id = ?', [req.userId]);
+      
+      // Create notification
+      const [user] = await pool.query('SELECT username FROM users WHERE id = ?', [req.userId]);
+      await pool.query(
+        'INSERT INTO notifications (user_id, from_user_id, type, message) VALUES (?, ?, ?, ?)',
+        [userId, req.userId, 'follow', `${user[0].username} started following you`]
+      );
+      
+      console.log(`User ${req.userId} followed ${userId}`);
+      res.json({ success: true, following: true });
+    }
+  } catch (error) {
+    console.error('Follow error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process follow' });
+  }
+});
+
+// Get user's following
+router.get('/:userId/following', async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    const [following] = await pool.query(`
+      SELECT u.id, u.username, u.full_name, u.avatar, u.is_verified
+      FROM follows f
+      JOIN users u ON f.following_id = u.id
+      WHERE f.follower_id = ?
+      ORDER BY f.created_at DESC
+    `, [userId]);
+    
+    res.json({ success: true, following });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch following' });
   }
 });
 

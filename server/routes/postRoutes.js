@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|avi|webm/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -54,7 +54,7 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Create post with image/video upload
+// Create post
 router.post('/', authenticateToken, upload.single('media'), async (req, res) => {
   const { caption, location, hashtags, media_type = 'image' } = req.body;
   const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
@@ -69,27 +69,8 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res) => 
       [req.userId, caption, mediaUrl, media_type, location, hashtags]
     );
     
-    // Update user's posts count
     await pool.query('UPDATE users SET posts_count = posts_count + 1 WHERE id = ?', [req.userId]);
     
-    // Process hashtags
-    if (hashtags) {
-      const hashtagList = hashtags.match(/#[\w\u0600-\u06FF]+/g) || [];
-      for (const tag of hashtagList) {
-        const tagName = tag.substring(1).toLowerCase();
-        let [hashtag] = await pool.query('SELECT id FROM hashtags WHERE name = ?', [tagName]);
-        
-        if (hashtag.length === 0) {
-          const [newTag] = await pool.query('INSERT INTO hashtags (name) VALUES (?)', [tagName]);
-          hashtag = [{ id: newTag.insertId }];
-        }
-        
-        await pool.query('INSERT INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?)', [result.insertId, hashtag[0].id]);
-        await pool.query('UPDATE hashtags SET posts_count = posts_count + 1 WHERE id = ?', [hashtag[0].id]);
-      }
-    }
-    
-    // Get the created post with user info
     const [newPost] = await pool.query(`
       SELECT p.*, u.username, u.full_name, u.avatar, u.is_verified 
       FROM posts p 
@@ -120,28 +101,14 @@ router.get('/feed', authenticateToken, async (req, res) => {
       LIMIT ? OFFSET ?
     `, [req.userId, parseInt(limit), parseInt(offset)]);
     
-    // Format posts
-    const formattedPosts = posts.map(post => ({
-      ...post,
-      is_liked: post.is_liked === 1,
-      likes_count: parseInt(post.likes_count),
-      comments_count: parseInt(post.comments_count),
-      shares_count: parseInt(post.shares_count),
-      views_count: parseInt(post.views_count)
-    }));
-    
-    res.json({ 
-      success: true, 
-      posts: formattedPosts, 
-      hasMore: posts.length === parseInt(limit) 
-    });
+    res.json({ success: true, posts, hasMore: posts.length === parseInt(limit) });
   } catch (error) {
     console.error('Feed error:', error);
     res.status(500).json({ success: false, message: 'Failed to load feed' });
   }
 });
 
-// Like a post
+// Like/Unlike a post
 router.post('/:postId/like', authenticateToken, async (req, res) => {
   const { postId } = req.params;
   
@@ -164,9 +131,10 @@ router.post('/:postId/like', authenticateToken, async (req, res) => {
       // Create notification
       const [post] = await pool.query('SELECT user_id FROM posts WHERE id = ?', [postId]);
       if (post[0].user_id !== req.userId) {
+        const [user] = await pool.query('SELECT username FROM users WHERE id = ?', [req.userId]);
         await pool.query(
-          'INSERT INTO notifications (user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?)',
-          [post[0].user_id, req.userId, 'like', postId]
+          'INSERT INTO notifications (user_id, from_user_id, type, post_id, message) VALUES (?, ?, ?, ?, ?)',
+          [post[0].user_id, req.userId, 'like', postId, `${user[0].username} liked your post`]
         );
       }
       
@@ -231,17 +199,19 @@ router.post('/:postId/comments', authenticateToken, async (req, res) => {
     if (parentId) {
       const [parentComment] = await pool.query('SELECT user_id FROM comments WHERE id = ?', [parentId]);
       if (parentComment[0].user_id !== req.userId) {
+        const [user] = await pool.query('SELECT username FROM users WHERE id = ?', [req.userId]);
         await pool.query(
-          'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id) VALUES (?, ?, ?, ?, ?)',
-          [parentComment[0].user_id, req.userId, 'comment', postId, result.insertId]
+          'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id, message) VALUES (?, ?, ?, ?, ?, ?)',
+          [parentComment[0].user_id, req.userId, 'comment', postId, result.insertId, `${user[0].username} replied to your comment`]
         );
       }
     } else {
       const [post] = await pool.query('SELECT user_id FROM posts WHERE id = ?', [postId]);
       if (post[0].user_id !== req.userId) {
+        const [user] = await pool.query('SELECT username FROM users WHERE id = ?', [req.userId]);
         await pool.query(
-          'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id) VALUES (?, ?, ?, ?, ?)',
-          [post[0].user_id, req.userId, 'comment', postId, result.insertId]
+          'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id, message) VALUES (?, ?, ?, ?, ?, ?)',
+          [post[0].user_id, req.userId, 'comment', postId, result.insertId, `${user[0].username} commented on your post`]
         );
       }
     }
@@ -257,6 +227,146 @@ router.post('/:postId/comments', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Comment error:', error);
     res.status(500).json({ success: false, message: 'Failed to add comment' });
+  }
+});
+
+// Share post (increment share count)
+router.post('/:postId/share', authenticateToken, async (req, res) => {
+  const { postId } = req.params;
+  
+  try {
+    await pool.query('UPDATE posts SET shares_count = shares_count + 1 WHERE id = ?', [postId]);
+    res.json({ success: true, message: 'Post shared successfully' });
+  } catch (error) {
+    console.error('Share error:', error);
+    res.status(500).json({ success: false, message: 'Failed to share post' });
+  }
+});
+
+// Save post to collection
+router.post('/:postId/save', authenticateToken, async (req, res) => {
+  const { postId } = req.params;
+  const { collectionId } = req.body;
+  
+  try {
+    // Check if already saved
+    const [existing] = await pool.query(
+      'SELECT id FROM saved_posts WHERE user_id = ? AND post_id = ?',
+      [req.userId, postId]
+    );
+    
+    if (existing.length > 0) {
+      await pool.query('DELETE FROM saved_posts WHERE user_id = ? AND post_id = ?', [req.userId, postId]);
+      res.json({ success: true, saved: false });
+    } else {
+      await pool.query(
+        'INSERT INTO saved_posts (user_id, post_id, collection_id) VALUES (?, ?, ?)',
+        [req.userId, postId, collectionId || null]
+      );
+      res.json({ success: true, saved: true });
+    }
+  } catch (error) {
+    console.error('Save error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save post' });
+  }
+});
+
+// Get user's saved posts
+router.get('/saved', authenticateToken, async (req, res) => {
+  try {
+    const [saved] = await pool.query(`
+      SELECT p.*, u.username, u.full_name, u.avatar, sp.collection_id,
+      c.name as collection_name
+      FROM saved_posts sp
+      JOIN posts p ON sp.post_id = p.id
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN collections c ON sp.collection_id = c.id
+      WHERE sp.user_id = ?
+      ORDER BY sp.created_at DESC
+    `, [req.userId]);
+    
+    res.json({ success: true, saved });
+  } catch (error) {
+    console.error('Get saved error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get saved posts' });
+  }
+});
+
+// Create collection
+router.post('/collections', authenticateToken, async (req, res) => {
+  const { name, icon } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ success: false, message: 'Collection name is required' });
+  }
+  
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO collections (user_id, name, icon) VALUES (?, ?, ?)',
+      [req.userId, name, icon || '📁']
+    );
+    
+    res.json({ success: true, collection: { id: result.insertId, name, icon: icon || '📁' } });
+  } catch (error) {
+    console.error('Create collection error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create collection' });
+  }
+});
+
+// Get user's collections
+router.get('/collections', authenticateToken, async (req, res) => {
+  try {
+    const [collections] = await pool.query(`
+      SELECT c.*, COUNT(sp.id) as posts_count
+      FROM collections c
+      LEFT JOIN saved_posts sp ON c.id = sp.collection_id
+      WHERE c.user_id = ?
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+    `, [req.userId]);
+    
+    res.json({ success: true, collections });
+  } catch (error) {
+    console.error('Get collections error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get collections' });
+  }
+});
+
+
+// Create post
+router.post('/', authenticateToken, upload.single('media'), async (req, res) => {
+  const { caption, location, hashtags, media_type = 'image' } = req.body;
+  const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  
+  console.log('Creating post:', { caption, location, mediaUrl, userId: req.userId });
+  
+  if (!mediaUrl) {
+    return res.status(400).json({ success: false, message: 'Media is required' });
+  }
+  
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO posts (user_id, caption, media_url, media_type, location, hashtags) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.userId, caption || '', mediaUrl, media_type, location || '', hashtags || '']
+    );
+    
+    // Update user's posts count
+    await pool.query('UPDATE users SET posts_count = posts_count + 1 WHERE id = ?', [req.userId]);
+    
+    // Get the created post with user info
+    const [newPost] = await pool.query(`
+      SELECT p.*, u.username, u.full_name, u.avatar, u.is_verified 
+      FROM posts p 
+      JOIN users u ON p.user_id = u.id 
+      WHERE p.id = ?
+    `, [result.insertId]);
+    
+    console.log('Post created successfully:', newPost[0]);
+    
+    res.json({ success: true, post: newPost[0] });
+  } catch (error) {
+    console.error('Post creation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create post', error: error.message });
   }
 });
 

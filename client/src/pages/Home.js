@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../context/ThemeContext';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import Navbar from '../components/Navbar';
+import PostCard from '../components/PostCard';
+import FollowButton from '../components/FollowButton';
+import { api } from '../services/api';
 import { 
-  FiHeart, FiMessageCircle, FiShare2, FiBookmark, FiSend, 
-  FiMoreHorizontal, FiVolume2, FiVolumeX, FiMusic,
-  FiMapPin, FiClock, FiEye, FiTrendingUp,
-  FiUsers, FiVideo, FiRadio, FiAward, FiPlus
+  FiTrendingUp, FiUsers, FiVideo, FiRadio, FiPlus, FiMusic, 
+  FiMapPin, FiSearch, FiBell, FiUser, FiHome, FiLoader
 } from 'react-icons/fi';
 import { FaFire, FaHashtag } from 'react-icons/fa';
 
@@ -18,131 +19,130 @@ export default function Home() {
   const { t } = useTranslation();
   const { currentTheme } = useTheme();
   const navigate = useNavigate();
+  
+  // State Management
   const [posts, setPosts] = useState([]);
+  const [stories, setStories] = useState([]);
+  const [trendingHashtags, setTrendingHashtags] = useState([]);
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [actionType, setActionType] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [mutedVideos, setMutedVideos] = useState({});
+  const [notifications] = useState([]);
+  const [activeStory, setActiveStory] = useState(null);
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState({ users: [], posts: [], hashtags: [] });
+  const [searching, setSearching] = useState(false);
+  
+  // Refs for scroll animations
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll();
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.8]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95]);
 
-  // Categories
+  // Categories with Rwanda-themed icons
   const categories = [
-    { id: 'all', name: 'All', icon: <FiTrendingUp />, color: 'from-blue-500 to-cyan-500' },
-    { id: 'music', name: 'Music', icon: <FiMusic />, color: 'from-purple-500 to-pink-500' },
-    { id: 'reels', name: 'Reels', icon: <FiVideo />, color: 'from-red-500 to-orange-500' },
-    { id: 'live', name: 'Live', icon: <FiRadio />, color: 'from-red-600 to-red-800' },
-    { id: 'trending', name: 'Trending', icon: <FaFire />, color: 'from-orange-500 to-red-500' },
+    { id: 'all', name: 'All', icon: <FiTrendingUp />, color: 'from-blue-500 to-cyan-500', description: 'Everything from Rwanda' },
+    { id: 'music', name: 'Music', icon: <FiMusic />, color: 'from-purple-500 to-pink-500', description: 'Rwandan beats & melodies' },
+    { id: 'reels', name: 'Reels', icon: <FiVideo />, color: 'from-red-500 to-orange-500', description: 'Short viral videos' },
+    { id: 'live', name: 'Live', icon: <FiRadio />, color: 'from-red-600 to-red-800', description: 'Streaming now' },
+    { id: 'trending', name: 'Trending', icon: <FaFire />, color: 'from-orange-500 to-red-500', description: 'Hot content' },
+    { id: 'travel', name: 'Travel', icon: <FiMapPin />, color: 'from-green-500 to-emerald-500', description: 'Explore Rwanda' }
   ];
 
-  // Demo posts data
-  const demoPosts = [
-    {
-      id: 1,
-      user: {
-        id: 1,
-        username: 'rwanda_tourism',
-        full_name: 'Rwanda Tourism',
-        avatar: '🇷🇼',
-        is_verified: true,
-        followers: '125K'
-      },
-      media_url: 'https://images.unsplash.com/photo-1584277261846-c6a3b6d3c9c3?w=800',
-      media_type: 'image',
-      caption: 'Discover the land of a thousand hills! 🌄 From volcanoes to savannahs, Rwanda has it all. #VisitRwanda #ExploreRwanda',
-      location: 'Volcanoes National Park',
-      hashtags: ['VisitRwanda', 'ExploreRwanda', 'GorillaTrekking'],
-      likes_count: 12500,
-      comments_count: 234,
-      shares_count: 1200,
-      views_count: 45000,
-      created_at: new Date().toISOString(),
-      is_liked: false
-    },
-    {
-      id: 2,
-      user: {
-        id: 2,
-        username: 'kigali_life',
-        full_name: 'Kigali Life',
-        avatar: '🏙️',
-        is_verified: true,
-        followers: '89K'
-      },
-      media_url: 'https://images.unsplash.com/photo-1559128010-7c1ad6e1b6a5?w=800',
-      media_type: 'image',
-      caption: 'Modern Kigali at sunset 🌆 Rwanda is rising! The cleanest city in Africa continues to amaze.',
-      location: 'Kigali, Rwanda',
-      hashtags: ['KigaliCity', 'RwandaRising', 'AfricaRising'],
-      likes_count: 8900,
-      comments_count: 1800,
-      shares_count: 3200,
-      views_count: 89000,
-      created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
-      is_liked: false
-    },
-    {
-      id: 3,
-      user: {
-        id: 3,
-        username: 'gorilla_trek',
-        full_name: 'Gorilla Trekking',
-        avatar: '🦍',
-        is_verified: true,
-        followers: '234K'
-      },
-      media_url: 'https://images.unsplash.com/photo-1543157144-f78c636d023d?w=800',
-      media_type: 'video',
-      caption: 'Incredible experience with these majestic creatures in Volcanoes National Park. Conservation efforts are bringing mountain gorillas back!',
-      location: 'Volcanoes National Park',
-      hashtags: ['GorillaTrekking', 'Conservation', 'Wildlife'],
-      likes_count: 23400,
-      comments_count: 560,
-      shares_count: 12800,
-      views_count: 1200000,
-      created_at: new Date(Date.now() - 24 * 3600000).toISOString(),
-      is_liked: false
-    },
-    {
-      id: 4,
-      user: {
-        id: 4,
-        username: 'rwanda_coffee',
-        full_name: 'Rwandan Coffee',
-        avatar: '☕',
-        is_verified: false,
-        followers: '45K'
-      },
-      media_url: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800',
-      media_type: 'image',
-      caption: 'From bean to cup - experience the finest coffee from the hills of Rwanda. 🇷🇼☕ #RwandanCoffee #CoffeeCulture',
-      location: 'Nyungwe, Rwanda',
-      hashtags: ['RwandanCoffee', 'CoffeeCulture', 'MadeInRwanda'],
-      likes_count: 4500,
-      comments_count: 892,
-      shares_count: 2100,
-      views_count: 89000,
-      created_at: new Date(Date.now() - 48 * 3600000).toISOString(),
-      is_liked: false
-    }
+  // Sample stories data
+  const sampleStories = [
+    { id: 1, user: { id: 1, username: 'your_story', full_name: 'Your Story', avatar: user?.avatar || '👤', hasStory: true, isUser: true, timestamp: 'Just now' } },
+    { id: 2, user: { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', hasStory: true, timestamp: '2h ago' } },
+    { id: 3, user: { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', hasStory: true, timestamp: '3h ago' } },
+    { id: 4, user: { id: 4, username: 'gorilla_trek', full_name: 'Gorilla Trekking', avatar: '🦍', hasStory: true, timestamp: '5h ago' } },
+    { id: 5, user: { id: 5, username: 'rwanda_coffee', full_name: 'Rwandan Coffee', avatar: '☕', hasStory: false, timestamp: '1d ago' } },
+    { id: 6, user: { id: 6, username: 'lake_kivu', full_name: 'Lake Kivu', avatar: '🌊', hasStory: true, timestamp: '8h ago' } }
   ];
 
-  // Initialize posts with demo data
-  useEffect(() => {
-    setPosts(demoPosts);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Sample suggested users
+  const sampleSuggestedUsers = [
+    { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', followers: 125000, verified: true },
+    { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', followers: 89000, verified: true },
+    { id: 4, username: 'gorilla_trek', full_name: 'Gorilla Trekking', avatar: '🦍', followers: 234000, verified: true },
+    { id: 5, username: 'rwanda_coffee', full_name: 'Rwandan Coffee', avatar: '☕', followers: 45000, verified: false }
+  ];
 
-  const handleLike = (postId) => {
-    if (!user) {
-      setActionType('like');
-      setShowLoginModal(true);
+  // Search function
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults({ users: [], posts: [], hashtags: [] });
       return;
     }
-    setPosts(prev => prev.map(post => 
-      post.id === postId 
-        ? { ...post, is_liked: !post.is_liked, likes_count: post.is_liked ? post.likes_count - 1 : post.likes_count + 1 }
-        : post
-    ));
+    
+    setSearching(true);
+    try {
+      const response = await api.get(`/search?q=${encodeURIComponent(searchQuery)}`);
+      if (response.data.success) {
+        setSearchResults({
+          users: response.data.users || [],
+          posts: response.data.posts || [],
+          hashtags: response.data.hashtags || []
+        });
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+    }
+    setSearching(false);
   };
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery) {
+        handleSearch();
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load data
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Load feed posts
+        const feedResponse = await api.get('/posts/feed');
+        if (feedResponse.data.success) {
+          setPosts(feedResponse.data.posts);
+        }
+        
+        // Load trending hashtags
+        const hashtagResponse = await api.get('/posts/hashtags/trending');
+        if (hashtagResponse.data.success) {
+          setTrendingHashtags(hashtagResponse.data.hashtags);
+        }
+        
+        // Set sample data
+        setStories(sampleStories);
+        setSuggestedUsers(sampleSuggestedUsers);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        // Use fallback data
+        setPosts([]);
+        setTrendingHashtags([
+          { name: 'VisitRwanda', posts_count: 12500 },
+          { name: 'KigaliCity', posts_count: 8200 },
+          { name: 'GorillaTrekking', posts_count: 5800 },
+          { name: 'RwandanCoffee', posts_count: 3900 },
+          { name: 'Umuganda', posts_count: 4200 }
+        ]);
+        setStories(sampleStories);
+        setSuggestedUsers(sampleSuggestedUsers);
+      }
+      setLoading(false);
+    };
+    
+    loadData();
+  }, []);
 
   const handleAction = (action) => {
     if (!user) {
@@ -151,8 +151,14 @@ export default function Home() {
     }
   };
 
-  const toggleMute = (postId) => {
-    setMutedVideos(prev => ({ ...prev, [postId]: !prev[postId] }));
+  const handleLogin = () => {
+    navigate('/login');
+    setShowLoginModal(false);
+  };
+
+  const handleRegister = () => {
+    navigate('/register');
+    setShowLoginModal(false);
   };
 
   const formatNumber = (num) => {
@@ -161,37 +167,127 @@ export default function Home() {
     return num.toString();
   };
 
-  const timeAgo = (date) => {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    if (seconds < 60) return 'just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return new Date(date).toLocaleDateString();
-  };
+  // Rwanda facts for loading screen
+  const rwandaFacts = [
+    "🦍 Home to over 1,000 mountain gorillas - half the world's population!",
+    "🌋 Known as the 'Land of a Thousand Hills' with over 1,000 hills",
+    "☕ Produces some of the world's finest Arabica coffee",
+    "🏙️ Kigali is consistently ranked Africa's cleanest city",
+    "🦩 Lake Kivu is one of Africa's Great Lakes with stunning scenery",
+    "🌿 Nyungwe Forest is home to chimpanzees and a canopy walkway"
+  ];
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-yellow-400 via-green-500 to-blue-600 flex items-center justify-center z-50">
+        <div className="text-center">
+          <motion.div
+            animate={{ scale: [1, 1.2, 1], rotate: [0, 360] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            className="w-32 h-32 mx-auto mb-8 relative"
+          >
+            <div className="absolute inset-0 bg-yellow-400 rounded-full opacity-75 animate-ping"></div>
+            <div className="absolute inset-0 bg-green-500 rounded-full opacity-75 animate-ping delay-300"></div>
+            <div className="absolute inset-0 bg-blue-600 rounded-full opacity-75 animate-ping delay-600"></div>
+            <div className="relative w-full h-full bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+              <span className="text-6xl animate-bounce">🇷🇼</span>
+            </div>
+          </motion.div>
+          
+          <motion.h2 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-3xl font-bold text-white mb-2"
+          >
+            IwacuHub
+          </motion.h2>
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-white/80 mb-6"
+          >
+            Loading Rwanda's digital home...
+          </motion.p>
+          
+          <div className="w-64 mx-auto">
+            <div className="h-1 bg-white/20 rounded-full overflow-hidden">
+              <motion.div
+                animate={{ width: ["0%", "100%"] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="h-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-full"
+              />
+            </div>
+          </div>
+          
+          <div className="mt-8 max-w-sm mx-auto">
+            <motion.div
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="bg-white/10 backdrop-blur-sm rounded-xl p-3"
+            >
+              <p className="text-white text-sm">{rwandaFacts[Math.floor(Date.now() / 3000) % rwandaFacts.length]}</p>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen ${currentTheme.bg} transition-all duration-300`}>
       <Navbar />
       
-      {/* Main Container with responsive spacing */}
-      <div className="pt-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        {/* Responsive Grid Layout */}
+      {/* Animated Hero Section */}
+      <motion.div 
+        ref={heroRef}
+        style={{ opacity: heroOpacity, scale: heroScale }}
+        className="relative overflow-hidden bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 mx-4 mt-4 rounded-3xl mb-6"
+      >
+        <div className="absolute inset-0 bg-black/20" />
+        <div className="relative px-6 py-12 text-center">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+            className="w-20 h-20 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
+          >
+            <span className="text-4xl animate-pulse">🇷🇼</span>
+          </motion.div>
+          <motion.h1
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-3xl md:text-4xl font-bold text-white mb-2"
+          >
+            Welcome to IwacuHub
+          </motion.h1>
+          <motion.p
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-white/90 text-sm md:text-base"
+          >
+            Discover the best of Rwanda's digital community
+          </motion.p>
+        </div>
+      </motion.div>
+
+      <div className="pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
           
           {/* Left Sidebar */}
           <aside className="hidden md:block lg:col-span-3 space-y-6">
             {/* User Profile Card */}
             {user && (
-              <div className="sticky top-24">
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="sticky top-24"
+              >
                 <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5 border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-all duration-300`}>
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
-                        <span className="text-2xl">{user.avatar || '👤'}</span>
+                        <span className="text-2xl">{user.avatar || user.username?.[0]?.toUpperCase() || '👤'}</span>
                       </div>
                       <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800 animate-pulse"></div>
                     </div>
@@ -203,37 +299,36 @@ export default function Home() {
                   </div>
                   
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                    <div className="text-center group cursor-pointer">
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{posts.length}</div>
+                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile')}>
+                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.posts_count || 0}</div>
                       <div className="text-xs text-gray-500">Posts</div>
                     </div>
-                    <div className="text-center group cursor-pointer">
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">1.2K</div>
+                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile/followers')}>
+                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.followers_count || 0}</div>
                       <div className="text-xs text-gray-500">Followers</div>
                     </div>
-                    <div className="text-center group cursor-pointer">
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">568</div>
+                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile/following')}>
+                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.following_count || 0}</div>
                       <div className="text-xs text-gray-500">Following</div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* Trending Hashtags */}
-            <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}>
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
+            >
               <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                 <FaFire className="text-orange-500" />
                 Trending in Rwanda
               </h3>
               <div className="space-y-3">
-                {[
-                  { tag: 'VisitRwanda', posts: '12.5K', trending: true },
-                  { tag: 'KigaliCity', posts: '8.2K', trending: true },
-                  { tag: 'GorillaTrekking', posts: '5.8K', trending: true },
-                  { tag: 'RwandanCoffee', posts: '3.9K', trending: 'rising' },
-                  { tag: 'Umuganda', posts: '4.2K', trending: true },
-                ].map((tag, i) => (
+                {trendingHashtags.slice(0, 5).map((tag, i) => (
                   <button
                     key={i}
                     onClick={() => handleAction('hashtag')}
@@ -241,19 +336,21 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-2">
                       <FaHashtag className="text-gray-400 text-sm" />
-                      <span className="font-medium text-gray-700 dark:text-gray-300 text-sm group-hover:text-green-500 transition">#{tag.tag}</span>
-                      {tag.trending === 'rising' && (
-                        <span className="text-xs text-green-500 animate-pulse">📈 Rising</span>
-                      )}
+                      <span className="font-medium text-gray-700 dark:text-gray-300 text-sm group-hover:text-green-500 transition">#{tag.name}</span>
                     </div>
-                    <span className="text-xs text-gray-500">{tag.posts} posts</span>
+                    <span className="text-xs text-gray-500">{formatNumber(tag.posts_count)} posts</span>
                   </button>
                 ))}
               </div>
-            </div>
+            </motion.div>
 
             {/* Rwanda Facts */}
-            <div className="bg-gradient-to-br from-yellow-50 via-green-50 to-blue-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-2xl shadow-lg p-5 border border-yellow-200 dark:border-gray-700">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-gradient-to-br from-yellow-50 via-green-50 to-blue-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-2xl shadow-lg p-5 border border-yellow-200 dark:border-gray-700"
+            >
               <h3 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                 <span className="text-2xl animate-float">🇷🇼</span> Did You Know?
               </h3>
@@ -271,253 +368,207 @@ export default function Home() {
                   <p className="text-sm text-gray-600 dark:text-gray-300">Rwandan coffee is among the world's finest, known for its rich flavor.</p>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </aside>
 
           {/* Main Feed */}
           <main className="lg:col-span-6 space-y-6">
             {/* Stories Section */}
-            <div className="overflow-x-auto scrollbar-hide">
-              <div className="flex gap-4 pb-2">
-                {/* Your Story */}
-                <div className="flex flex-col items-center gap-1 flex-shrink-0 group cursor-pointer" onClick={() => handleAction('story')}>
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600">
-                      <div className="w-full h-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center group-hover:scale-105 transition-transform">
-                        <span className="text-2xl">{user?.avatar || '👤'}</span>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="sticky top-16 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl"
+            >
+              <div className="overflow-x-auto scrollbar-hide p-4">
+                <div className="flex gap-4">
+                  {stories.map((story, index) => (
+                    <motion.button
+                      key={story.id}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: index * 0.05 }}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setActiveStory(story)}
+                      className="flex flex-col items-center gap-1 flex-shrink-0 group"
+                    >
+                      <div className="relative">
+                        <div className={`w-16 h-16 rounded-full p-0.5 ${story.user.hasStory ? 'bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600' : 'bg-gray-300'}`}>
+                          <div className="w-full h-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <span className="text-2xl">{story.user.avatar}</span>
+                          </div>
+                        </div>
+                        {story.user.isUser && (
+                          <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-0.5 border-2 border-white dark:border-gray-800">
+                            <FiPlus className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                        {story.user.hasStory && (
+                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                        )}
                       </div>
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-0.5 border-2 border-white dark:border-gray-800">
-                      <FiPlus className="w-3 h-3 text-white" />
-                    </div>
-                  </div>
-                  <span className="text-xs text-gray-600 dark:text-gray-400">Your Story</span>
+                      <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">
+                        {story.user.full_name}
+                      </span>
+                    </motion.button>
+                  ))}
                 </div>
-                
-                {/* Other Stories */}
-                {[
-                  { emoji: '🇷🇼', name: 'Rwanda Tourism' },
-                  { emoji: '🏙️', name: 'Kigali Life' },
-                  { emoji: '🦍', name: 'Gorilla Trek' },
-                  { emoji: '☕', name: 'Coffee' },
-                  { emoji: '🌊', name: 'Lake Kivu' },
-                ].map((story, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1 flex-shrink-0 group cursor-pointer" onClick={() => handleAction('story')}>
-                    <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-yellow-400 to-green-500 group-hover:scale-105 transition-transform">
-                      <div className="w-full h-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center">
-                        <span className="text-2xl">{story.emoji}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">{story.name}</span>
-                  </div>
-                ))}
               </div>
-            </div>
+            </motion.div>
 
             {/* Categories */}
             <div className="flex flex-wrap gap-2">
               {categories.map((category) => (
-                <button
+                <motion.button
                   key={category.id}
+                  whileHover={{ scale: 1.05, y: -1 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setActiveCategory(category.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
                     activeCategory === category.id
-                      ? `bg-gradient-to-r ${category.color} text-white shadow-lg scale-105`
+                      ? `bg-gradient-to-r ${category.color} text-white shadow-lg`
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
-                  {category.icon}
-                  {category.name}
-                </button>
+                  <span className="text-sm sm:text-base">{category.icon}</span>
+                  <span>{category.name}</span>
+                  {activeCategory === category.id && (
+                    <motion.span
+                      layoutId="activeCategoryDot"
+                      className="w-1 h-1 bg-white rounded-full ml-1"
+                    />
+                  )}
+                </motion.button>
               ))}
             </div>
 
             {/* Feed Posts */}
-            <AnimatePresence>
-              {posts.map((post, index) => (
-                <motion.div
-                  key={post.id}
-                  initial={{ opacity: 0, y: 50 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -50 }}
-                  transition={{ delay: index * 0.1, duration: 0.5 }}
-                  className={`${currentTheme.card} rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1`}
+            {posts.length === 0 ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-12"
+              >
+                <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
+                  <span className="text-4xl">🇷🇼</span>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">No posts yet</h3>
+                <p className="text-gray-500 dark:text-gray-400">Be the first to share something amazing!</p>
+                <button
+                  onClick={() => navigate('/upload')}
+                  className="mt-4 px-6 py-2 bg-gradient-to-r from-yellow-400 to-green-500 text-white rounded-full font-semibold hover:shadow-lg transition-all"
                 >
-                  {/* Post Header */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
-                             onClick={() => navigate(`/profile/${post.user.id}`)}>
-                          <span className="text-xl">{post.user.avatar}</span>
-                        </div>
-                        {post.user.is_verified && (
-                          <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-0.5 border-2 border-white dark:border-gray-800">
-                            <FiAward className="w-2 h-2 text-white" />
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <span className={`font-semibold ${currentTheme.text} cursor-pointer hover:underline`}
-                            onClick={() => navigate(`/profile/${post.user.id}`)}>
-                            {post.user.full_name}
-                          </span>
-                          {post.user.is_verified && <span className="text-blue-500 text-xs">✓</span>}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <FiClock className="w-3 h-3" />
-                          <span>{timeAgo(post.created_at)}</span>
-                          {post.location && (
-                            <>
-                              <span>•</span>
-                              <FiMapPin className="w-3 h-3" />
-                              <span>{post.location}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <button className="text-gray-400 hover:text-gray-600 transition">
-                      <FiMoreHorizontal />
-                    </button>
-                  </div>
-
-                  {/* Media Content */}
-                  <div className="relative bg-black group">
-                    {post.media_type === 'video' ? (
-                      <div className="relative">
-                        <video 
-                          src={post.media_url} 
-                          className="w-full max-h-[500px] object-contain"
-                          muted={mutedVideos[post.id]}
-                          loop
-                          autoPlay
-                        />
-                        <button
-                          onClick={() => toggleMute(post.id)}
-                          className="absolute bottom-2 right-2 bg-black/50 rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-                        >
-                          {mutedVideos[post.id] ? <FiVolumeX className="text-white" /> : <FiVolume2 className="text-white" />}
-                        </button>
-                      </div>
-                    ) : (
-                      <img 
-                        src={post.media_url} 
-                        alt={post.caption} 
-                        className="w-full max-h-[500px] object-contain cursor-pointer hover:scale-105 transition-transform duration-500"
-                      />
-                    )}
-                    {post.views_count > 0 && (
-                      <div className="absolute bottom-2 left-2 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                        <FiEye className="w-3 h-3" />
-                        <span>{formatNumber(post.views_count)} views</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Engagement Bar */}
-                  <div className="flex items-center justify-between px-4 pt-3">
-                    <div className="flex items-center gap-5">
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleLike(post.id)}
-                        className="flex items-center gap-1 group"
-                      >
-                        {post.is_liked ? (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="text-red-500"
-                          >
-                            <FiHeart className="w-6 h-6 fill-red-500" />
-                          </motion.div>
-                        ) : (
-                          <FiHeart className="w-6 h-6 text-gray-500 group-hover:text-red-500 transition-colors" />
-                        )}
-                        <span className="text-sm font-medium">{formatNumber(post.likes_count)}</span>
-                      </motion.button>
-                      
-                      <button 
-                        onClick={() => handleAction('comment')}
-                        className="flex items-center gap-1 group"
-                      >
-                        <FiMessageCircle className="w-6 h-6 text-gray-500 group-hover:text-blue-500 transition-colors" />
-                        <span className="text-sm">{formatNumber(post.comments_count)}</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => handleAction('share')}
-                        className="flex items-center gap-1 group"
-                      >
-                        <FiShare2 className="w-6 h-6 text-gray-500 group-hover:text-green-500 transition-colors" />
-                        <span className="text-sm">{formatNumber(post.shares_count)}</span>
-                      </button>
-                    </div>
-                    <button onClick={() => handleAction('save')} className="group">
-                      <FiBookmark className="w-5 h-5 text-gray-500 group-hover:text-yellow-500 transition-colors" />
-                    </button>
-                  </div>
-
-                  {/* Caption */}
-                  <div className="px-4 pb-2">
-                    <p className={`${currentTheme.text} text-sm`}>
-                      <span className="font-semibold mr-2">{post.user.full_name}</span>
-                      {post.caption}
-                    </p>
-                    {post.hashtags && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {post.hashtags.map(tag => (
-                          <button 
-                            key={tag} 
-                            onClick={() => handleAction('hashtag')}
-                            className="text-blue-500 text-sm hover:underline transition"
-                          >
-                            #{tag}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Comment Input */}
-                  <div className="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder={t('addComment') || 'Add a comment...'}
-                        className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-all"
-                        onClick={() => handleAction('comment')}
-                        readOnly={!user}
-                      />
-                      <button 
-                        onClick={() => handleAction('comment')}
-                        className="text-green-500 hover:text-green-600 transition-transform hover:scale-110"
-                      >
-                        <FiSend />
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                  Create Post
+                </button>
+              </motion.div>
+            ) : (
+              <AnimatePresence>
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} onUpdate={() => {}} />
+                ))}
+              </AnimatePresence>
+            )}
           </main>
 
           {/* Right Sidebar */}
           <aside className="hidden lg:block lg:col-span-3 space-y-6">
             <div className="sticky top-24 space-y-6">
+              {/* Search Bar */}
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={`${currentTheme.card} rounded-2xl shadow-lg p-4`}
+              >
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search users, posts, hashtags..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  {searching && (
+                    <FiLoader className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 animate-spin" />
+                  )}
+                </div>
+                
+                {/* Search Results */}
+                {searchQuery && (
+                  <div className="mt-4">
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-3 text-sm">Search Results</h3>
+                    
+                    {/* Users results */}
+                    {searchResults.users.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs text-gray-500 mb-2">Users</p>
+                        {searchResults.users.slice(0, 3).map((userResult) => (
+                          <div key={userResult.id} className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
+                                <span className="text-sm">{userResult.avatar || userResult.username?.[0]?.toUpperCase()}</span>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{userResult.full_name || userResult.username}</p>
+                                <p className="text-xs text-gray-500">@{userResult.username}</p>
+                              </div>
+                            </div>
+                            <button onClick={() => navigate(`/profile/${userResult.id}`)} className="text-blue-500 text-xs">
+                              View
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Posts results */}
+                    {searchResults.posts.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs text-gray-500 mb-2">Posts</p>
+                        {searchResults.posts.slice(0, 3).map((postResult) => (
+                          <div key={postResult.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition">
+                            <img src={postResult.media_url} alt="post" className="w-10 h-10 rounded-lg object-cover" />
+                            <div className="flex-1">
+                              <p className="text-xs line-clamp-1">{postResult.caption || 'No caption'}</p>
+                              <p className="text-xs text-gray-500">by {postResult.username}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Hashtag results */}
+                    {searchResults.hashtags.length > 0 && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-2">Hashtags</p>
+                        {searchResults.hashtags.slice(0, 3).map((tag) => (
+                          <button key={tag.name} className="block w-full text-left p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition">
+                            <span className="text-blue-500 text-sm">#{tag.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">{tag.posts_count} posts</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {searchResults.users.length === 0 && searchResults.posts.length === 0 && searchResults.hashtags.length === 0 && (
+                      <p className="text-center text-gray-500 text-sm py-4">No results found for "{searchQuery}"</p>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+
               {/* Suggested Users */}
-              <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}>
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
+                className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
+              >
                 <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                   <FiUsers className="text-green-500" /> Suggested for you
                 </h3>
                 <div className="space-y-4">
-                  {[
-                    { name: 'Rwanda Tourism', username: '@visitrwanda', avatar: '🇷🇼', followers: '125K', verified: true },
-                    { name: 'Kigali Life', username: '@kigalilife', avatar: '🏙️', followers: '89K', verified: true },
-                    { name: 'Gorilla Trekking', username: '@gorillatrek', avatar: '🦍', followers: '234K', verified: true },
-                    { name: 'Rwandan Music', username: '@rwandamusic', avatar: '🎵', followers: '67K', verified: false },
-                  ].map((creator, i) => (
+                  {suggestedUsers.map((creator, i) => (
                     <div key={i} className="flex items-center justify-between group">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -525,27 +576,50 @@ export default function Home() {
                         </div>
                         <div>
                           <div className="flex items-center gap-1">
-                            <p className="font-medium text-gray-800 dark:text-white text-sm">{creator.name}</p>
+                            <p className="font-medium text-gray-800 dark:text-white text-sm">{creator.full_name}</p>
                             {creator.verified && <span className="text-blue-500 text-xs">✓</span>}
                           </div>
-                          <p className="text-xs text-gray-500">{creator.username}</p>
-                          <p className="text-xs text-gray-400">{creator.followers} followers</p>
+                          <p className="text-xs text-gray-500">@{creator.username}</p>
+                          <p className="text-xs text-gray-400">{formatNumber(creator.followers)} followers</p>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => handleAction('follow')}
-                        className="text-blue-500 text-sm font-semibold hover:text-blue-600 transition-transform hover:scale-105"
-                      >
-                        Follow
-                      </button>
+                      <FollowButton 
+                        userId={creator.id} 
+                        initialFollowing={false}
+                        onFollowChange={(following) => {}}
+                      />
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
+
+              {/* Notifications Panel */}
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <FiBell className="text-yellow-500" /> Notifications
+                  </h3>
+                </div>
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  <div className="text-center py-4 text-gray-500">
+                    No new notifications
+                  </div>
+                </div>
+              </motion.div>
 
               {/* Call to Action */}
               {!user && (
-                <div className="bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-2xl shadow-lg p-5 text-white text-center transform hover:scale-105 transition-all duration-300">
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-2xl shadow-lg p-5 text-white text-center transform hover:scale-105 transition-all duration-300"
+                >
                   <div className="text-4xl mb-3 animate-bounce">🇷🇼</div>
                   <h3 className="font-bold text-lg mb-2">Join the community!</h3>
                   <p className="text-sm opacity-90 mb-4">Be part of Rwanda's digital family</p>
@@ -555,12 +629,53 @@ export default function Home() {
                   >
                     Create Account
                   </button>
-                </div>
+                </motion.div>
               )}
             </div>
           </aside>
         </div>
       </div>
+
+      {/* Story Viewer Modal */}
+      <AnimatePresence>
+        {activeStory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black z-50"
+            onClick={() => setActiveStory(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full h-full flex items-center justify-center"
+            >
+              <div className="absolute top-4 left-4 right-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
+                  <span className="text-xl">{activeStory.user.avatar}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-semibold">{activeStory.user.full_name}</p>
+                  <p className="text-white/60 text-xs">{activeStory.timestamp}</p>
+                </div>
+                <button 
+                  onClick={() => setActiveStory(null)}
+                  className="text-white/80 hover:text-white p-2"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-80 h-80 rounded-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 flex items-center justify-center animate-pulse">
+                  <span className="text-8xl animate-bounce">{activeStory.user.avatar}</span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Login Modal */}
       <AnimatePresence>
@@ -573,9 +688,9 @@ export default function Home() {
             onClick={() => setShowLoginModal(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.9, opacity: 0, y: 50 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 50 }}
               className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
@@ -601,7 +716,7 @@ export default function Home() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => navigate('/login')}
+                  onClick={handleLogin}
                   className="w-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 text-white font-bold py-3 rounded-xl hover:shadow-lg transition-all"
                 >
                   Sign In
@@ -609,7 +724,7 @@ export default function Home() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => navigate('/register')}
+                  onClick={handleRegister}
                   className="w-full border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
                 >
                   Create New Account
@@ -625,6 +740,41 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Floating Action Button */}
+      {user && (
+        <motion.button
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => navigate('/upload')}
+          className="fixed bottom-24 right-4 sm:bottom-8 sm:right-8 bg-gradient-to-r from-yellow-400 to-green-500 text-white p-4 rounded-full shadow-2xl hover:shadow-xl transition-all z-50"
+        >
+          <FiPlus className="w-6 h-6" />
+        </motion.button>
+      )}
+
+      {/* Mobile Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-50 block lg:hidden">
+        <div className="flex justify-around py-2">
+          <button className="text-green-600 p-2">
+            <FiHome className="w-6 h-6" />
+          </button>
+          <button className="text-gray-500 p-2">
+            <FiSearch className="w-6 h-6" />
+          </button>
+          <button onClick={() => navigate('/upload')} className="text-gray-500 p-2 relative">
+            <FiPlus className="w-6 h-6" />
+          </button>
+          <button className="text-gray-500 p-2 relative">
+            <FiBell className="w-6 h-6" />
+          </button>
+          <button onClick={() => navigate('/profile')} className="text-gray-500 p-2">
+            <FiUser className="w-6 h-6" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

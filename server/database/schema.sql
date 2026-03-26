@@ -177,3 +177,29 @@ INSERT INTO posts (user_id, caption, media_url, media_type, location, hashtags, 
 (1, 'Incredible experience with these majestic creatures in Volcanoes National Park. #GorillaTrekking #Conservation', 'https://images.unsplash.com/photo-1543157144-f78c636d023d?w=800', 'video', 'Volcanoes National Park', '#GorillaTrekking #Conservation', 23400, 560, 1200000);
 
 SELECT 'Database setup complete!' as Status;
+
+
+USE iwacuhub_db;
+
+-- Create collections table
+CREATE TABLE IF NOT EXISTS collections (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    icon VARCHAR(10) DEFAULT '📁',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create saved_posts table
+CREATE TABLE IF NOT EXISTS saved_posts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    post_id INT NOT NULL,
+    collection_id INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_save (user_id, post_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL
+);

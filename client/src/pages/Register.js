@@ -2,15 +2,18 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion } from "framer-motion";
-import { FiUser, FiMail, FiLock, FiUserPlus, FiArrowLeft } from "react-icons/fi";
+import { FiUser, FiMail, FiLock, FiUserPlus, FiArrowLeft, FiEye, FiEyeOff } from "react-icons/fi";
+import GoBack from "../components/GoBack";
 
 export default function Register() {
   const navigate = useNavigate();
-  const { register } = useAuth(); // Remove authError
+  const { register } = useAuth();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -60,12 +63,9 @@ export default function Register() {
         transition={{ duration: 0.5 }}
         className="relative bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md w-full border border-white/20"
       >
-        <Link
-          to="/"
-          className="absolute top-4 left-4 text-white/70 hover:text-white transition p-2 rounded-lg hover:bg-white/20"
-        >
-          <FiArrowLeft className="w-5 h-5" />
-        </Link>
+        <div className="absolute top-4 left-4">
+          <GoBack to="/" label="Home" />
+        </div>
 
         <div className="text-center mb-8">
           <motion.div 
@@ -117,25 +117,39 @@ export default function Register() {
           <div className="relative">
             <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="Password (min. 6 characters)"
-              className="w-full pl-10 pr-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
+              className="w-full pl-10 pr-12 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/60 hover:text-white transition"
+            >
+              {showPassword ? <FiEyeOff className="w-5 h-5" /> : <FiEye className="w-5 h-5" />}
+            </button>
           </div>
 
           <div className="relative">
             <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
             <input
-              type="password"
+              type={showConfirmPassword ? "text" : "password"}
               placeholder="Confirm Password"
-              className="w-full pl-10 pr-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
+              className="w-full pl-10 pr-12 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition-all"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/60 hover:text-white transition"
+            >
+              {showConfirmPassword ? <FiEyeOff className="w-5 h-5" /> : <FiEye className="w-5 h-5" />}
+            </button>
           </div>
 
           <motion.button
