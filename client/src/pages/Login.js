@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion } from "framer-motion";
-import { FiMail, FiLock, FiLogIn, FiArrowLeft, FiEye, FiEyeOff } from "react-icons/fi";
+import { FiMail, FiLock, FiLogIn, FiEye, FiEyeOff } from "react-icons/fi";
 import GoBack from "../components/GoBack";
 
 export default function Login() {

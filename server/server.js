@@ -49,6 +49,12 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+
+//Add Search Route to Server
+
+
+const searchRoutes = require('./routes/search');
+app.use('/api/search', searchRoutes);
 // Start server
 app.listen(PORT, async () => {
   const dbConnected = await testConnection();

@@ -203,3 +203,19 @@ CREATE TABLE IF NOT EXISTS saved_posts (
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL
 );
+
+
+
+--search history
+
+USE iwacuhub_db;
+
+CREATE TABLE IF NOT EXISTS search_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    query VARCHAR(255) NOT NULL,
+    searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_searched_at (searched_at)
+);

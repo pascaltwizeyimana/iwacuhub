@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from 'react-i18next';
 import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import Navbar from '../components/Navbar';
@@ -16,7 +15,6 @@ import { FaFire, FaHashtag } from 'react-icons/fa';
 
 export default function Home() {
   const { user } = useAuth();
-  const { t } = useTranslation();
   const { currentTheme } = useTheme();
   const navigate = useNavigate();
   
@@ -29,7 +27,6 @@ export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [actionType, setActionType] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [notifications] = useState([]);
   const [activeStory, setActiveStory] = useState(null);
   
   // Search state
@@ -43,17 +40,17 @@ export default function Home() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.8]);
   const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95]);
 
-  // Categories with Rwanda-themed icons
+  // Categories
   const categories = [
-    { id: 'all', name: 'All', icon: <FiTrendingUp />, color: 'from-blue-500 to-cyan-500', description: 'Everything from Rwanda' },
-    { id: 'music', name: 'Music', icon: <FiMusic />, color: 'from-purple-500 to-pink-500', description: 'Rwandan beats & melodies' },
-    { id: 'reels', name: 'Reels', icon: <FiVideo />, color: 'from-red-500 to-orange-500', description: 'Short viral videos' },
-    { id: 'live', name: 'Live', icon: <FiRadio />, color: 'from-red-600 to-red-800', description: 'Streaming now' },
-    { id: 'trending', name: 'Trending', icon: <FaFire />, color: 'from-orange-500 to-red-500', description: 'Hot content' },
-    { id: 'travel', name: 'Travel', icon: <FiMapPin />, color: 'from-green-500 to-emerald-500', description: 'Explore Rwanda' }
+    { id: 'all', name: 'All', icon: <FiTrendingUp />, color: 'from-blue-500 to-cyan-500' },
+    { id: 'music', name: 'Music', icon: <FiMusic />, color: 'from-purple-500 to-pink-500' },
+    { id: 'reels', name: 'Reels', icon: <FiVideo />, color: 'from-red-500 to-orange-500' },
+    { id: 'live', name: 'Live', icon: <FiRadio />, color: 'from-red-600 to-red-800' },
+    { id: 'trending', name: 'Trending', icon: <FaFire />, color: 'from-orange-500 to-red-500' },
+    { id: 'travel', name: 'Travel', icon: <FiMapPin />, color: 'from-green-500 to-emerald-500' }
   ];
 
-  // Sample stories data
+  // Sample data
   const sampleStories = [
     { id: 1, user: { id: 1, username: 'your_story', full_name: 'Your Story', avatar: user?.avatar || '👤', hasStory: true, isUser: true, timestamp: 'Just now' } },
     { id: 2, user: { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', hasStory: true, timestamp: '2h ago' } },
@@ -63,7 +60,6 @@ export default function Home() {
     { id: 6, user: { id: 6, username: 'lake_kivu', full_name: 'Lake Kivu', avatar: '🌊', hasStory: true, timestamp: '8h ago' } }
   ];
 
-  // Sample suggested users
   const sampleSuggestedUsers = [
     { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', followers: 125000, verified: true },
     { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', followers: 89000, verified: true },
@@ -72,7 +68,7 @@ export default function Home() {
   ];
 
   // Search function
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       setSearchResults({ users: [], posts: [], hashtags: [] });
       return;
@@ -92,7 +88,7 @@ export default function Home() {
       console.error('Search failed:', error);
     }
     setSearching(false);
-  };
+  }, [searchQuery]);
 
   // Debounced search
   useEffect(() => {
@@ -102,7 +98,7 @@ export default function Home() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, handleSearch]);
 
   // Load data
   useEffect(() => {
@@ -126,7 +122,6 @@ export default function Home() {
         setSuggestedUsers(sampleSuggestedUsers);
       } catch (error) {
         console.error('Failed to load data:', error);
-        // Use fallback data
         setPosts([]);
         setTrendingHashtags([
           { name: 'VisitRwanda', posts_count: 12500 },
@@ -142,6 +137,7 @@ export default function Home() {
     };
     
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAction = (action) => {
@@ -159,6 +155,18 @@ export default function Home() {
   const handleRegister = () => {
     navigate('/register');
     setShowLoginModal(false);
+  };
+
+  const handleFollowChange = (userId, isFollowing, followerCount, targetFollowersCount) => {
+    setSuggestedUsers(prev => prev.map(user => 
+      user.id === userId 
+        ? { 
+            ...user, 
+            is_following: isFollowing, 
+            followers: targetFollowersCount || (isFollowing ? user.followers + 1 : user.followers - 1)
+          }
+        : user
+    ));
   };
 
   const formatNumber = (num) => {
@@ -238,7 +246,7 @@ export default function Home() {
     <div className={`min-h-screen ${currentTheme.bg} transition-all duration-300`}>
       <Navbar />
       
-      {/* Animated Hero Section */}
+      {/* Hero Section */}
       <motion.div 
         ref={heroRef}
         style={{ opacity: heroOpacity, scale: heroScale }}
@@ -278,51 +286,41 @@ export default function Home() {
           <aside className="hidden md:block lg:col-span-3 space-y-6">
             {/* User Profile Card */}
             {user && (
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="sticky top-24"
-              >
+              <div className="sticky top-24">
                 <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5 border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-all duration-300`}>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/profile')}>
                     <div className="relative">
                       <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
                         <span className="text-2xl">{user.avatar || user.username?.[0]?.toUpperCase() || '👤'}</span>
                       </div>
-                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800 animate-pulse"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                     </div>
                     <div className="flex-1">
                       <h3 className={`font-bold ${currentTheme.text}`}>{user.full_name || user.username}</h3>
                       <p className="text-xs text-gray-500">@{user.username}</p>
                     </div>
-                    <button className="text-blue-500 text-sm font-semibold hover:underline">Switch</button>
                   </div>
                   
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile')}>
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.posts_count || 0}</div>
+                    <div className="text-center cursor-pointer" onClick={() => navigate('/profile')}>
+                      <div className="font-bold text-gray-800 dark:text-white">{user.posts_count || 0}</div>
                       <div className="text-xs text-gray-500">Posts</div>
                     </div>
-                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile/followers')}>
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.followers_count || 0}</div>
+                    <div className="text-center">
+                      <div className="font-bold text-gray-800 dark:text-white">{user.followers_count || 0}</div>
                       <div className="text-xs text-gray-500">Followers</div>
                     </div>
-                    <div className="text-center group cursor-pointer" onClick={() => navigate('/profile/following')}>
-                      <div className="font-bold text-gray-800 dark:text-white group-hover:text-green-500 transition">{user.following_count || 0}</div>
+                    <div className="text-center">
+                      <div className="font-bold text-gray-800 dark:text-white">{user.following_count || 0}</div>
                       <div className="text-xs text-gray-500">Following</div>
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* Trending Hashtags */}
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
-            >
+            <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}>
               <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                 <FaFire className="text-orange-500" />
                 Trending in Rwanda
@@ -342,15 +340,10 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-            </motion.div>
+            </div>
 
             {/* Rwanda Facts */}
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-gradient-to-br from-yellow-50 via-green-50 to-blue-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-2xl shadow-lg p-5 border border-yellow-200 dark:border-gray-700"
-            >
+            <div className="bg-gradient-to-br from-yellow-50 via-green-50 to-blue-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-2xl shadow-lg p-5 border border-yellow-200 dark:border-gray-700">
               <h3 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                 <span className="text-2xl animate-float">🇷🇼</span> Did You Know?
               </h3>
@@ -368,27 +361,18 @@ export default function Home() {
                   <p className="text-sm text-gray-600 dark:text-gray-300">Rwandan coffee is among the world's finest, known for its rich flavor.</p>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </aside>
 
           {/* Main Feed */}
           <main className="lg:col-span-6 space-y-6">
             {/* Stories Section */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="sticky top-16 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl"
-            >
+            <div className="sticky top-16 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl">
               <div className="overflow-x-auto scrollbar-hide p-4">
                 <div className="flex gap-4">
-                  {stories.map((story, index) => (
-                    <motion.button
+                  {stories.map((story) => (
+                    <button
                       key={story.id}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: index * 0.05 }}
-                      whileHover={{ y: -2 }}
-                      whileTap={{ scale: 0.95 }}
                       onClick={() => setActiveStory(story)}
                       className="flex flex-col items-center gap-1 flex-shrink-0 group"
                     >
@@ -410,19 +394,17 @@ export default function Home() {
                       <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">
                         {story.user.full_name}
                       </span>
-                    </motion.button>
+                    </button>
                   ))}
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* Categories */}
             <div className="flex flex-wrap gap-2">
               {categories.map((category) => (
-                <motion.button
+                <button
                   key={category.id}
-                  whileHover={{ scale: 1.05, y: -1 }}
-                  whileTap={{ scale: 0.95 }}
                   onClick={() => setActiveCategory(category.id)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
                     activeCategory === category.id
@@ -432,23 +414,13 @@ export default function Home() {
                 >
                   <span className="text-sm sm:text-base">{category.icon}</span>
                   <span>{category.name}</span>
-                  {activeCategory === category.id && (
-                    <motion.span
-                      layoutId="activeCategoryDot"
-                      className="w-1 h-1 bg-white rounded-full ml-1"
-                    />
-                  )}
-                </motion.button>
+                </button>
               ))}
             </div>
 
             {/* Feed Posts */}
             {posts.length === 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center py-12"
-              >
+              <div className="text-center py-12">
                 <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
                   <span className="text-4xl">🇷🇼</span>
                 </div>
@@ -460,7 +432,7 @@ export default function Home() {
                 >
                   Create Post
                 </button>
-              </motion.div>
+              </div>
             ) : (
               <AnimatePresence>
                 {posts.map((post) => (
@@ -474,11 +446,7 @@ export default function Home() {
           <aside className="hidden lg:block lg:col-span-3 space-y-6">
             <div className="sticky top-24 space-y-6">
               {/* Search Bar */}
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className={`${currentTheme.card} rounded-2xl shadow-lg p-4`}
-              >
+              <div className={`${currentTheme.card} rounded-2xl shadow-lg p-4`}>
                 <div className="relative">
                   <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
@@ -498,7 +466,6 @@ export default function Home() {
                   <div className="mt-4">
                     <h3 className="font-bold text-gray-800 dark:text-white mb-3 text-sm">Search Results</h3>
                     
-                    {/* Users results */}
                     {searchResults.users.length > 0 && (
                       <div className="mb-4">
                         <p className="text-xs text-gray-500 mb-2">Users</p>
@@ -521,7 +488,6 @@ export default function Home() {
                       </div>
                     )}
                     
-                    {/* Posts results */}
                     {searchResults.posts.length > 0 && (
                       <div className="mb-4">
                         <p className="text-xs text-gray-500 mb-2">Posts</p>
@@ -537,7 +503,6 @@ export default function Home() {
                       </div>
                     )}
                     
-                    {/* Hashtag results */}
                     {searchResults.hashtags.length > 0 && (
                       <div>
                         <p className="text-xs text-gray-500 mb-2">Hashtags</p>
@@ -555,21 +520,16 @@ export default function Home() {
                     )}
                   </div>
                 )}
-              </motion.div>
+              </div>
 
               {/* Suggested Users */}
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
-              >
+              <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}>
                 <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                   <FiUsers className="text-green-500" /> Suggested for you
                 </h3>
                 <div className="space-y-4">
-                  {suggestedUsers.map((creator, i) => (
-                    <div key={i} className="flex items-center justify-between group">
+                  {suggestedUsers.map((creator) => (
+                    <div key={creator.id} className="flex items-center justify-between group">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center group-hover:scale-105 transition-transform">
                           <span className="text-xl">{creator.avatar}</span>
@@ -585,41 +545,19 @@ export default function Home() {
                       </div>
                       <FollowButton 
                         userId={creator.id} 
-                        initialFollowing={false}
-                        onFollowChange={(following) => {}}
+                        initialFollowing={creator.is_following || false}
+                        onFollowChange={(following, followerCount, targetFollowersCount) => 
+                          handleFollowChange(creator.id, following, followerCount, targetFollowersCount)
+                        }
                       />
                     </div>
                   ))}
                 </div>
-              </motion.div>
-
-              {/* Notifications Panel */}
-              <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className={`${currentTheme.card} rounded-2xl shadow-lg p-5`}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    <FiBell className="text-yellow-500" /> Notifications
-                  </h3>
-                </div>
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  <div className="text-center py-4 text-gray-500">
-                    No new notifications
-                  </div>
-                </div>
-              </motion.div>
+              </div>
 
               {/* Call to Action */}
               {!user && (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-2xl shadow-lg p-5 text-white text-center transform hover:scale-105 transition-all duration-300"
-                >
+                <div className="bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-2xl shadow-lg p-5 text-white text-center transform hover:scale-105 transition-all duration-300">
                   <div className="text-4xl mb-3 animate-bounce">🇷🇼</div>
                   <h3 className="font-bold text-lg mb-2">Join the community!</h3>
                   <p className="text-sm opacity-90 mb-4">Be part of Rwanda's digital family</p>
@@ -629,7 +567,7 @@ export default function Home() {
                   >
                     Create Account
                   </button>
-                </motion.div>
+                </div>
               )}
             </div>
           </aside>
@@ -707,7 +645,6 @@ export default function Home() {
                   {actionType === 'like' && '❤️ Like this amazing content'}
                   {actionType === 'comment' && '💬 Join the conversation'}
                   {actionType === 'share' && '📤 Share with your friends'}
-                  {actionType === 'save' && '🔖 Save for later'}
                   {!actionType && 'Create an account to interact'}
                 </p>
               </div>

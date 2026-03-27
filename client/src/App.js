@@ -30,7 +30,7 @@ function ProtectedRoute({ children }) {
 }
 
 function AppContent() {
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
   
   if (loading) {
     return <LoadingSpinner />;
@@ -38,10 +38,19 @@ function AppContent() {
   
   return (
     <Routes>
+      {/* Public routes - accessible to everyone */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/search" element={<Search />} />
+      
+      {/* Profile routes - dynamic and static */}
+      <Route path="/profile/:userId" element={<Profile />} />
+      <Route path="/profile" element={
+        user ? <Navigate to={`/profile/${user.id}`} replace /> : <Navigate to="/login" replace />
+      } />
+      
+      {/* Protected routes - require authentication */}
       <Route path="/notifications" element={
         <ProtectedRoute>
           <Notifications />
@@ -55,11 +64,6 @@ function AppContent() {
       <Route path="/upload" element={
         <ProtectedRoute>
           <Upload />
-        </ProtectedRoute>
-      } />
-      <Route path="/profile" element={
-        <ProtectedRoute>
-          <Profile />
         </ProtectedRoute>
       } />
       <Route path="/chat" element={
@@ -77,6 +81,9 @@ function AppContent() {
           <Videos />
         </ProtectedRoute>
       } />
+      
+      {/* Catch all - redirect to home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
@@ -85,7 +92,12 @@ function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AppContent />
         </BrowserRouter>
       </ThemeProvider>
