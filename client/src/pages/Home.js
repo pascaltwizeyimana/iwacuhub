@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -39,35 +39,54 @@ export default function Home() {
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0.8]);
   const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95]);
-
-  // Categories
-  const categories = [
+  
+  // Add cleanup flag to prevent memory leaks
+  const isMounted = useRef(true);
+  
+  // Memoized categories to prevent re-renders
+  const categories = useMemo(() => [
     { id: 'all', name: 'All', icon: <FiTrendingUp />, color: 'from-blue-500 to-cyan-500' },
     { id: 'music', name: 'Music', icon: <FiMusic />, color: 'from-purple-500 to-pink-500' },
     { id: 'reels', name: 'Reels', icon: <FiVideo />, color: 'from-red-500 to-orange-500' },
     { id: 'live', name: 'Live', icon: <FiRadio />, color: 'from-red-600 to-red-800' },
     { id: 'trending', name: 'Trending', icon: <FaFire />, color: 'from-orange-500 to-red-500' },
     { id: 'travel', name: 'Travel', icon: <FiMapPin />, color: 'from-green-500 to-emerald-500' }
-  ];
+  ], []);
 
-  // Sample data
-  const sampleStories = [
+  // Memoized sample data
+  const sampleStories = useMemo(() => [
     { id: 1, user: { id: 1, username: 'your_story', full_name: 'Your Story', avatar: user?.avatar || '👤', hasStory: true, isUser: true, timestamp: 'Just now' } },
     { id: 2, user: { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', hasStory: true, timestamp: '2h ago' } },
     { id: 3, user: { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', hasStory: true, timestamp: '3h ago' } },
     { id: 4, user: { id: 4, username: 'gorilla_trek', full_name: 'Gorilla Trekking', avatar: '🦍', hasStory: true, timestamp: '5h ago' } },
     { id: 5, user: { id: 5, username: 'rwanda_coffee', full_name: 'Rwandan Coffee', avatar: '☕', hasStory: false, timestamp: '1d ago' } },
     { id: 6, user: { id: 6, username: 'lake_kivu', full_name: 'Lake Kivu', avatar: '🌊', hasStory: true, timestamp: '8h ago' } }
-  ];
+  ], [user]);
 
-  const sampleSuggestedUsers = [
+  const sampleSuggestedUsers = useMemo(() => [
     { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', followers: 125000, verified: true },
     { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', followers: 89000, verified: true },
     { id: 4, username: 'gorilla_trek', full_name: 'Gorilla Trekking', avatar: '🦍', followers: 234000, verified: true },
     { id: 5, username: 'rwanda_coffee', full_name: 'Rwandan Coffee', avatar: '☕', followers: 45000, verified: false }
-  ];
+  ], []);
 
-  // Search function
+  const rwandaFacts = useMemo(() => [
+    "🦍 Home to over 1,000 mountain gorillas - half the world's population!",
+    "🌋 Known as the 'Land of a Thousand Hills' with over 1,000 hills",
+    "☕ Produces some of the world's finest Arabica coffee",
+    "🏙️ Kigali is consistently ranked Africa's cleanest city",
+    "🦩 Lake Kivu is one of Africa's Great Lakes with stunning scenery",
+    "🌿 Nyungwe Forest is home to chimpanzees and a canopy walkway"
+  ], []);
+
+  // Memoized format number function
+  const formatNumber = useCallback((num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  }, []);
+
+  // Search function with abort controller
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       setSearchResults({ users: [], posts: [], hashtags: [] });
@@ -75,9 +94,13 @@ export default function Home() {
     }
     
     setSearching(true);
+    const abortController = new AbortController();
+    
     try {
-      const response = await api.get(`/search?q=${encodeURIComponent(searchQuery)}`);
-      if (response.data.success) {
+      const response = await api.get(`/search?q=${encodeURIComponent(searchQuery)}`, {
+        signal: abortController.signal
+      });
+      if (isMounted.current && response.data.success) {
         setSearchResults({
           users: response.data.users || [],
           posts: response.data.posts || [],
@@ -85,79 +108,120 @@ export default function Home() {
         });
       }
     } catch (error) {
-      console.error('Search failed:', error);
+      if (error.name !== 'AbortError' && isMounted.current) {
+        console.error('Search failed:', error);
+      }
     }
-    setSearching(false);
+    
+    if (isMounted.current) {
+      setSearching(false);
+    }
+    
+    return () => abortController.abort();
   }, [searchQuery]);
 
-  // Debounced search
+  // Debounced search with cleanup
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery) {
+    let timeoutId;
+    if (searchQuery) {
+      timeoutId = setTimeout(() => {
         handleSearch();
+      }, 500);
+    } else {
+      setSearchResults({ users: [], posts: [], hashtags: [] });
+    }
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
-    }, 500);
-    return () => clearTimeout(timer);
+    };
   }, [searchQuery, handleSearch]);
 
-  // Load data
+  // Load data with cleanup
   useEffect(() => {
+    isMounted.current = true;
+    const abortController = new AbortController();
+    
     const loadData = async () => {
       setLoading(true);
       try {
-        // Load feed posts
-        const feedResponse = await api.get('/posts/feed');
-        if (feedResponse.data.success) {
-          setPosts(feedResponse.data.posts);
-        }
+        // Load feed posts with timeout
+        const feedPromise = api.get('/posts/feed', { signal: abortController.signal });
+        const hashtagPromise = api.get('/posts/hashtags/trending', { signal: abortController.signal });
         
-        // Load trending hashtags
-        const hashtagResponse = await api.get('/posts/hashtags/trending');
-        if (hashtagResponse.data.success) {
-          setTrendingHashtags(hashtagResponse.data.hashtags);
-        }
+        const [feedResponse, hashtagResponse] = await Promise.allSettled([feedPromise, hashtagPromise]);
         
-        // Set sample data
-        setStories(sampleStories);
-        setSuggestedUsers(sampleSuggestedUsers);
+        if (isMounted.current) {
+          if (feedResponse.status === 'fulfilled' && feedResponse.value.data.success) {
+            setPosts(feedResponse.value.data.posts || []);
+          } else {
+            setPosts([]);
+          }
+          
+          if (hashtagResponse.status === 'fulfilled' && hashtagResponse.value.data.success) {
+            setTrendingHashtags(hashtagResponse.value.data.hashtags);
+          } else {
+            // Fallback data
+            setTrendingHashtags([
+              { name: 'VisitRwanda', posts_count: 12500 },
+              { name: 'KigaliCity', posts_count: 8200 },
+              { name: 'GorillaTrekking', posts_count: 5800 },
+              { name: 'RwandanCoffee', posts_count: 3900 },
+              { name: 'Umuganda', posts_count: 4200 }
+            ]);
+          }
+          
+          setStories(sampleStories);
+          setSuggestedUsers(sampleSuggestedUsers);
+        }
       } catch (error) {
-        console.error('Failed to load data:', error);
-        setPosts([]);
-        setTrendingHashtags([
-          { name: 'VisitRwanda', posts_count: 12500 },
-          { name: 'KigaliCity', posts_count: 8200 },
-          { name: 'GorillaTrekking', posts_count: 5800 },
-          { name: 'RwandanCoffee', posts_count: 3900 },
-          { name: 'Umuganda', posts_count: 4200 }
-        ]);
-        setStories(sampleStories);
-        setSuggestedUsers(sampleSuggestedUsers);
+        if (error.name !== 'AbortError' && isMounted.current) {
+          console.error('Failed to load data:', error);
+          // Set fallback data
+          setPosts([]);
+          setTrendingHashtags([
+            { name: 'VisitRwanda', posts_count: 12500 },
+            { name: 'KigaliCity', posts_count: 8200 },
+            { name: 'GorillaTrekking', posts_count: 5800 },
+            { name: 'RwandanCoffee', posts_count: 3900 },
+            { name: 'Umuganda', posts_count: 4200 }
+          ]);
+          setStories(sampleStories);
+          setSuggestedUsers(sampleSuggestedUsers);
+        }
+      } finally {
+        if (isMounted.current) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     };
     
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    
+    return () => {
+      isMounted.current = false;
+      abortController.abort();
+    };
+  }, [sampleStories, sampleSuggestedUsers]);
 
-  const handleAction = (action) => {
+  const handleAction = useCallback((action) => {
     if (!user) {
       setActionType(action);
       setShowLoginModal(true);
     }
-  };
+  }, [user]);
 
-  const handleLogin = () => {
+  const handleLogin = useCallback(() => {
     navigate('/login');
     setShowLoginModal(false);
-  };
+  }, [navigate]);
 
-  const handleRegister = () => {
+  const handleRegister = useCallback(() => {
     navigate('/register');
     setShowLoginModal(false);
-  };
+  }, [navigate]);
 
-  const handleFollowChange = (userId, isFollowing, followerCount, targetFollowersCount) => {
+  const handleFollowChange = useCallback((userId, isFollowing, followerCount, targetFollowersCount) => {
     setSuggestedUsers(prev => prev.map(user => 
       user.id === userId 
         ? { 
@@ -167,79 +231,66 @@ export default function Home() {
           }
         : user
     ));
-  };
+  }, []);
 
-  const formatNumber = (num) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toString();
-  };
-
-  // Rwanda facts for loading screen
-  const rwandaFacts = [
-    "🦍 Home to over 1,000 mountain gorillas - half the world's population!",
-    "🌋 Known as the 'Land of a Thousand Hills' with over 1,000 hills",
-    "☕ Produces some of the world's finest Arabica coffee",
-    "🏙️ Kigali is consistently ranked Africa's cleanest city",
-    "🦩 Lake Kivu is one of Africa's Great Lakes with stunning scenery",
-    "🌿 Nyungwe Forest is home to chimpanzees and a canopy walkway"
-  ];
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-gradient-to-br from-yellow-400 via-green-500 to-blue-600 flex items-center justify-center z-50">
-        <div className="text-center">
-          <motion.div
-            animate={{ scale: [1, 1.2, 1], rotate: [0, 360] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            className="w-32 h-32 mx-auto mb-8 relative"
-          >
-            <div className="absolute inset-0 bg-yellow-400 rounded-full opacity-75 animate-ping"></div>
-            <div className="absolute inset-0 bg-green-500 rounded-full opacity-75 animate-ping delay-300"></div>
-            <div className="absolute inset-0 bg-blue-600 rounded-full opacity-75 animate-ping delay-600"></div>
-            <div className="relative w-full h-full bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-              <span className="text-6xl animate-bounce">🇷🇼</span>
-            </div>
-          </motion.div>
-          
-          <motion.h2 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-3xl font-bold text-white mb-2"
-          >
-            IwacuHub
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-white/80 mb-6"
-          >
-            Loading Rwanda's digital home...
-          </motion.p>
-          
-          <div className="w-64 mx-auto">
-            <div className="h-1 bg-white/20 rounded-full overflow-hidden">
-              <motion.div
-                animate={{ width: ["0%", "100%"] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="h-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-full"
-              />
-            </div>
+  // Memoized loading screen component
+  const LoadingScreen = useMemo(() => (
+    <div className="fixed inset-0 bg-gradient-to-br from-yellow-400 via-green-500 to-blue-600 flex items-center justify-center z-50">
+      <div className="text-center">
+        <motion.div
+          animate={{ scale: [1, 1.2, 1], rotate: [0, 360] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="w-32 h-32 mx-auto mb-8 relative"
+        >
+          <div className="absolute inset-0 bg-yellow-400 rounded-full opacity-75 animate-ping"></div>
+          <div className="absolute inset-0 bg-green-500 rounded-full opacity-75 animate-ping delay-300"></div>
+          <div className="absolute inset-0 bg-blue-600 rounded-full opacity-75 animate-ping delay-600"></div>
+          <div className="relative w-full h-full bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+            <span className="text-6xl animate-bounce">🇷🇼</span>
           </div>
-          
-          <div className="mt-8 max-w-sm mx-auto">
+        </motion.div>
+        
+        <motion.h2 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-3xl font-bold text-white mb-2"
+        >
+          IwacuHub
+        </motion.h2>
+        <motion.p 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="text-white/80 mb-6"
+        >
+          Loading Rwanda's digital home...
+        </motion.p>
+        
+        <div className="w-64 mx-auto">
+          <div className="h-1 bg-white/20 rounded-full overflow-hidden">
             <motion.div
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="bg-white/10 backdrop-blur-sm rounded-xl p-3"
-            >
-              <p className="text-white text-sm">{rwandaFacts[Math.floor(Date.now() / 3000) % rwandaFacts.length]}</p>
-            </motion.div>
+              animate={{ width: ["0%", "100%"] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="h-full bg-gradient-to-r from-yellow-400 via-green-500 to-blue-600 rounded-full"
+            />
           </div>
         </div>
+        
+        <div className="mt-8 max-w-sm mx-auto">
+          <motion.div
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-3"
+          >
+            <p className="text-white text-sm">{rwandaFacts[Math.floor(Date.now() / 3000) % rwandaFacts.length]}</p>
+          </motion.div>
+        </div>
       </div>
-    );
+    </div>
+  ), [rwandaFacts]);
+
+  if (loading) {
+    return LoadingScreen;
   }
 
   return (
@@ -328,7 +379,7 @@ export default function Home() {
               <div className="space-y-3">
                 {trendingHashtags.slice(0, 5).map((tag, i) => (
                   <button
-                    key={i}
+                    key={`${tag.name}-${i}`}
                     onClick={() => handleAction('hashtag')}
                     className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition group"
                   >
@@ -434,7 +485,7 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <AnimatePresence>
+              <AnimatePresence mode="wait">
                 {posts.map((post) => (
                   <PostCard key={post.id} post={post} onUpdate={() => {}} />
                 ))}
@@ -493,7 +544,9 @@ export default function Home() {
                         <p className="text-xs text-gray-500 mb-2">Posts</p>
                         {searchResults.posts.slice(0, 3).map((postResult) => (
                           <div key={postResult.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition">
-                            <img src={postResult.media_url} alt="post" className="w-10 h-10 rounded-lg object-cover" />
+                            {postResult.media_url && (
+                              <img src={postResult.media_url} alt="post" className="w-10 h-10 rounded-lg object-cover" />
+                            )}
                             <div className="flex-1">
                               <p className="text-xs line-clamp-1">{postResult.caption || 'No caption'}</p>
                               <p className="text-xs text-gray-500">by {postResult.username}</p>

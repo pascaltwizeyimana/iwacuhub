@@ -1,23 +1,21 @@
 {
   "name": "iwacuhub-server",
   "version": "1.0.0",
-  "description": "IwacuHub Backend API",
+  "description": "iWacuHub Server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "set NODE_OPTIONS=--max_old_space_size=4096 && react-scripts start",
+    "build": "set NODE_OPTIONS=--max_old_space_size=4096 && react-scripts build"
   },
   "dependencies": {
     "express": "^4.18.2",
+    "mysql2": "^3.6.0",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "bcrypt": "^5.1.1",
-    "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.6.5",
-    "multer": "^1.4.5-lts.1",
-    "socket.io": "^4.5.4"
+    "dotenv": "^16.0.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^2.0.22"
   }
 }

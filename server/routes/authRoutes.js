@@ -1,114 +1,155 @@
+// server/routes/authRoutes.js
 const express = require('express');
+const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/db');
-const router = express.Router();
+const db = require('../config/db');
 
-// Register endpoint
-router.post('/register', async (req, res) => {
-  const { username, email, password, full_name } = req.body;
-  
-  if (!username || !email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'All fields are required' 
-    });
-  }
-  
-  if (password.length < 6) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Password must be at least 6 characters' 
-    });
-  }
-  
-  try {
-    const [existing] = await pool.query(
-      'SELECT id FROM users WHERE email = ? OR username = ?', 
-      [email, username]
-    );
-    
-    if (existing.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User already exists' 
-      });
+// Admin login endpoint
+router.post('/admin-login', async (req, res) => {
+    const connection = await db.getConnection();
+    try {
+        const { email, password } = req.body;
+        
+        // Only allow the specific admin email
+        if (email !== 'kobscall@gmail.com') {
+            return res.status(401).json({ 
+                message: 'Access denied. Admin credentials required.' 
+            });
+        }
+        
+        // Get user from database
+        const [users] = await connection.query(
+            'SELECT * FROM users WHERE email = ?',
+            [email]
+        );
+        
+        if (users.length === 0) {
+            return res.status(401).json({ message: 'Admin account not found' });
+        }
+        
+        const user = users[0];
+        
+        // Verify password
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+            return res.status(401).json({ message: 'Invalid password' });
+        }
+        
+        // Check if user is admin
+        if (user.role !== 'admin') {
+            return res.status(403).json({ 
+                message: 'Access denied. This account does not have admin privileges.' 
+            });
+        }
+        
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                userId: user.id, 
+                email: user.email,
+                role: user.role 
+            },
+            process.env.JWT_SECRET || 'iwacuhub_secret_key_2024',
+            { expiresIn: '7d' }
+        );
+        
+        // Store session in database
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        
+        await connection.query(
+            'INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)',
+            [user.id, token, expiresAt]
+        );
+        
+        // Update last login
+        await connection.query(
+            'UPDATE users SET last_active = NOW() WHERE id = ?',
+            [user.id]
+        );
+        
+        // Log the login
+        await connection.query(
+            'INSERT INTO system_logs (action, user_id, details, ip_address) VALUES (?, ?, ?, ?)',
+            ['ADMIN_LOGIN', user.id, JSON.stringify({ email: user.email }), req.ip || req.headers['x-forwarded-for'] || 'unknown']
+        );
+        
+        // Send response without password
+        const { password: _, ...userWithoutPassword } = user;
+        
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                full_name: user.full_name,
+                role: user.role,
+                is_verified: user.is_verified,
+                is_creator: user.is_creator,
+                avatar: user.avatar
+            },
+            message: 'Welcome to Admin Dashboard!'
+        });
+        
+    } catch (error) {
+        console.error('Admin login error:', error);
+        res.status(500).json({ message: 'Login failed. Please try again.' });
+    } finally {
+        connection.release();
     }
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const [result] = await pool.query(
-      'INSERT INTO users (username, email, password, full_name) VALUES (?, ?, ?, ?)',
-      [username, email, hashedPassword, full_name || username]
-    );
-    
-    const token = jwt.sign(
-      { id: result.insertId, username, email },
-      process.env.JWT_SECRET || 'iwacuhub-secret-key-2024',
-      { expiresIn: '7d' }
-    );
-    
-    res.json({
-      success: true,
-      user: { 
-        id: result.insertId, 
-        username, 
-        email,
-        full_name: full_name || username
-      },
-      token
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ success: false, message: 'Registration failed' });
-  }
 });
 
-// Login endpoint
+// Regular login (keep your existing login if you have it)
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Email and password are required' 
-    });
-  }
-  
-  try {
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+    // Your existing login logic here
+    // Or redirect to admin login
+    res.status(400).json({ message: 'Please use admin-login endpoint' });
+});
+
+// Verify token endpoint
+router.get('/verify', async (req, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
     
-    if (users.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!token) {
+        return res.status(401).json({ message: 'No token provided' });
     }
     
-    const user = users[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-    
-    if (!validPassword) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'iwacuhub_secret_key_2024');
+        
+        const [users] = await db.query(
+            'SELECT id, username, email, full_name, role FROM users WHERE id = ?',
+            [decoded.userId]
+        );
+        
+        if (users.length === 0) {
+            return res.status(401).json({ message: 'User not found' });
+        }
+        
+        res.json({
+            valid: true,
+            user: users[0]
+        });
+    } catch (error) {
+        res.status(401).json({ message: 'Invalid token' });
     }
-    
-    const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email },
-      process.env.JWT_SECRET || 'iwacuhub-secret-key-2024',
-      { expiresIn: '7d' }
-    );
-    
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        full_name: user.full_name || user.username
-      },
-      token
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Login failed' });
-  }
+});
+
+// Logout endpoint
+router.post('/logout', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (token) {
+            await db.query('DELETE FROM sessions WHERE token = ?', [token]);
+        }
+        res.json({ message: 'Logged out successfully' });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ message: 'Logout failed' });
+    }
 });
 
 module.exports = router;

@@ -1,36 +1,32 @@
+// server/config/db.js
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const dotenv = require('dotenv');
 
-// Create connection pool
+dotenv.config();
+
 const pool = mysql.createPool({
-  host: '127.0.0.1',  // Use 127.0.0.1 instead of localhost
-  user: 'root',
-  password: '',        // Your MySQL password (leave empty if none)
-  database: 'iwacuhub_db',
-  port: 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  connectTimeout: 30000,  // Increase timeout
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'iwacuhub_db',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
 });
 
+// Test connection function
 const testConnection = async () => {
-  try {
-    const connection = await pool.getConnection();
-    console.log('✅ MySQL Connected successfully!');
-    connection.release();
-    return true;
-  } catch (error) {
-    console.error('❌ MySQL Connection failed:', error.message);
-    console.log('\n📋 Troubleshooting:');
-    console.log('   1. Is MySQL running? Check XAMPP Control Panel');
-    console.log('   2. Check if database "iwacuhub_db" exists');
-    console.log('   3. Check username/password (default: root / empty)');
-    console.log('   4. Check MySQL port (default: 3306)');
-    return false;
-  }
+    try {
+        const connection = await pool.getConnection();
+        console.log('✅ Database connected successfully');
+        connection.release();
+        return true;
+    } catch (error) {
+        console.error('❌ Database connection failed:', error.message);
+        return false;
+    }
 };
 
 module.exports = { pool, testConnection };

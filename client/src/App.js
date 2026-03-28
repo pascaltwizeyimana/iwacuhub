@@ -1,3 +1,4 @@
+// client/src/App.js
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -14,6 +15,11 @@ import Videos from "./pages/Videos";
 import Search from "./pages/Search";
 import Notifications from "./pages/Notifications";
 import Live from "./pages/Live";
+
+// Admin imports
+import AdminLogin from "./components/AdminLogin";
+import AdminDashboard from "./components/AdminDashboard";
+import AdminProtectedRoute from "./components/AdminProtectedRoute";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -80,6 +86,39 @@ function AppContent() {
         <ProtectedRoute>
           <Videos />
         </ProtectedRoute>
+      } />
+      
+      {/* Admin Routes - Separate from main app */}
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin/dashboard" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="dashboard" />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/users" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="users" />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/posts" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="posts" />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/comments" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="comments" />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/analytics" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="analytics" />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/logs" element={
+        <AdminProtectedRoute>
+          <AdminDashboard initialTab="logs" />
+        </AdminProtectedRoute>
       } />
       
       {/* Catch all - redirect to home */}
