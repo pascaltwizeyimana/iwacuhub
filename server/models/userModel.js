@@ -1,31 +1,72 @@
-// server/models/User.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { 
-    type: String, 
-    enum: ['admin', 'moderator', 'user'],
-    default: 'user'
-  },
-  status: {
+const UserSchema = new mongoose.Schema({
+  username: {
     type: String,
-    enum: ['active', 'inactive', 'suspended'],
-    default: 'active'
+    required: true,
+    unique: true,
+    trim: true,
+    minlength: 3,
+    maxlength: 30
   },
-  avatar: String,
-  lastLogin: Date,
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: Date
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 6
+  },
+  full_name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  avatar: {
+    type: String,
+    default: ''
+  },
+  bio: {
+    type: String,
+    maxlength: 160,
+    default: ''
+  },
+  followers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  following: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  posts_count: {
+    type: Number,
+    default: 0
+  },
+  followers_count: {
+    type: Number,
+    default: 0
+  },
+  following_count: {
+    type: Number,
+    default: 0
+  },
+  verified: {
+    type: Boolean,
+    default: false
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now
+  }
 });
 
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', UserSchema);

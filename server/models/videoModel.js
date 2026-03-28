@@ -1,19 +1,88 @@
-// MySQL table creation for short videos (TikTok Reels)
-// Run: mysql iwacuhub_db < this file
+const mongoose = require('mongoose');
 
-CREATE TABLE IF NOT EXISTS short_videos (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  caption VARCHAR(500),
-  videos JSON, -- array of video paths
-  likes INT DEFAULT 0,
-  views INT DEFAULT 0,
-  location VARCHAR(100) DEFAULT 'Kigali, Rwanda', -- Rwanda only
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
+const VideoSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
+  caption: {
+    type: String,
+    maxlength: 500,
+    default: ''
+  },
+  videos: [{
+    type: String,
+    required: true
+  }],
+  likes: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  likes_count: {
+    type: Number,
+    default: 0
+  },
+  views: {
+    type: Number,
+    default: 0,
+    index: true
+  },
+  location: {
+    type: String,
+    default: 'Kigali, Rwanda'
+  },
+  hashtags: [{
+    type: String,
+    lowercase: true,
+    trim: true
+  }],
+  visibility: {
+    type: String,
+    enum: ['public', 'followers', 'private'],
+    default: 'public'
+  },
+  created_at: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now
+  }
+});
 
--- Index for fast feeds
-CREATE INDEX idx_short_videos_created ON short_videos(created_at);
-CREATE INDEX idx_short_videos_user ON short_videos(user_id);
+// Indexes for fast feeds
+VideoSchema.index({ created_at: -1 });
+VideoSchema.index({ user: 1, created_at: -1 });
+VideoSchema.index({ views: -1 });
+VideoSchema.index({ hashtags: 1 });
 
+// Update likes_count before saving
+VideoSchema.pre('save', function(next) {
+  this.likes_count = this.likes.length;
+  this.updated_at = Date.now();
+  next();
+});
+
+// Method to increment views
+VideoSchema.methods.incrementViews = async function() {
+  this.views += 1;
+  return await this.save();
+};
+
+// Method to toggle like
+VideoSchema.methods.toggleLike = async function(userId) {
+  const index = this.likes.indexOf(userId);
+  if (index === -1) {
+    this.likes.push(userId);
+  } else {
+    this.likes.splice(index, 1);
+  }
+  this.likes_count = this.likes.length;
+  return await this.save();
+};
+
+module.exports = mongoose.model('Video', VideoSchema);

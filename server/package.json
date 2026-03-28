@@ -1,21 +1,24 @@
 {
   "name": "iwacuhub-server",
   "version": "1.0.0",
-  "description": "iWacuHub Server",
+  "description": "IwacuHub Server with MongoDB Atlas",
   "main": "server.js",
   "scripts": {
-    "start": "set NODE_OPTIONS=--max_old_space_size=4096 && react-scripts start",
-    "build": "set NODE_OPTIONS=--max_old_space_size=4096 && react-scripts build"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node scripts/seed.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mysql2": "^3.6.0",
-    "bcrypt": "^5.1.0",
-    "jsonwebtoken": "^9.0.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.1.1",
+    "mongoose": "^7.5.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^3.0.1"
   }
 }
