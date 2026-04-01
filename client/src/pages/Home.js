@@ -53,15 +53,15 @@ export default function Home() {
     { id: 'travel', name: 'Travel', icon: <FiMapPin />, color: 'from-green-500 to-emerald-500' }
   ], []);
 
-  // Memoized sample data
+  // Memoized sample data - Removed avatar URLs, using emojis instead
   const sampleStories = useMemo(() => [
-    { id: 1, user: { id: 1, username: 'your_story', full_name: 'Your Story', avatar: user?.avatar || '👤', hasStory: true, isUser: true, timestamp: 'Just now' } },
+    { id: 1, user: { id: 1, username: 'your_story', full_name: 'Your Story', avatar: '📸', hasStory: true, isUser: true, timestamp: 'Just now' } },
     { id: 2, user: { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', hasStory: true, timestamp: '2h ago' } },
     { id: 3, user: { id: 3, username: 'kigali_life', full_name: 'Kigali Life', avatar: '🏙️', hasStory: true, timestamp: '3h ago' } },
     { id: 4, user: { id: 4, username: 'gorilla_trek', full_name: 'Gorilla Trekking', avatar: '🦍', hasStory: true, timestamp: '5h ago' } },
     { id: 5, user: { id: 5, username: 'rwanda_coffee', full_name: 'Rwandan Coffee', avatar: '☕', hasStory: false, timestamp: '1d ago' } },
     { id: 6, user: { id: 6, username: 'lake_kivu', full_name: 'Lake Kivu', avatar: '🌊', hasStory: true, timestamp: '8h ago' } }
-  ], [user]);
+  ], []);
 
   const sampleSuggestedUsers = useMemo(() => [
     { id: 2, username: 'rwanda_tourism', full_name: 'Rwanda Tourism', avatar: '🇷🇼', followers: 125000, verified: true },
@@ -335,14 +335,14 @@ export default function Home() {
           
           {/* Left Sidebar */}
           <aside className="hidden md:block lg:col-span-3 space-y-6">
-            {/* User Profile Card */}
+            {/* User Profile Card - Removed avatar URL, using initials */}
             {user && (
               <div className="sticky top-24">
                 <div className={`${currentTheme.card} rounded-2xl shadow-lg p-5 border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-all duration-300`}>
                   <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/profile')}>
                     <div className="relative">
                       <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
-                        <span className="text-2xl">{user.avatar || user.username?.[0]?.toUpperCase() || '👤'}</span>
+                        <span className="text-2xl font-bold text-white">{user.username?.[0]?.toUpperCase() || '👤'}</span>
                       </div>
                       <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                     </div>
@@ -524,7 +524,7 @@ export default function Home() {
                           <div key={userResult.id} className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
-                                <span className="text-sm">{userResult.avatar || userResult.username?.[0]?.toUpperCase()}</span>
+                                <span className="text-sm font-bold text-white">{userResult.username?.[0]?.toUpperCase()}</span>
                               </div>
                               <div>
                                 <p className="text-sm font-medium">{userResult.full_name || userResult.username}</p>

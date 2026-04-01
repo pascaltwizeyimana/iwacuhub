@@ -1,8 +1,10 @@
-// server/routes/admin.js
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../config/db');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const User = require('../models/userModel');
+const Post = require('../models/postModel');
+const Video = require('../models/videoModel');
 
 // Middleware to verify admin token
 const verifyAdminToken = async (req, res, next) => {
@@ -13,18 +15,15 @@ const verifyAdminToken = async (req, res, next) => {
     }
     
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'iwacuhub_secret_key_2024');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'iwacuhub_super_secret_key_2024');
         
-        const [users] = await pool.query(
-            'SELECT id, username, email, role FROM users WHERE id = ?',
-            [decoded.userId]
-        );
+        const user = await User.findById(decoded.userId).select('-password');
         
-        if (users.length === 0 || users[0].role !== 'admin') {
+        if (!user || user.role !== 'admin') {
             return res.status(403).json({ message: "Admin access required" });
         }
         
-        req.user = users[0];
+        req.user = user;
         next();
     } catch (error) {
         return res.status(401).json({ message: "Invalid token" });
@@ -34,27 +33,52 @@ const verifyAdminToken = async (req, res, next) => {
 // Dashboard Statistics
 router.get('/stats', verifyAdminToken, async (req, res) => {
     try {
-        const [userStats] = await pool.query(`
-            SELECT 
-                COUNT(*) as totalUsers,
-                SUM(CASE WHEN is_verified = 1 THEN 1 ELSE 0 END) as verifiedUsers,
-                SUM(CASE WHEN is_creator = 1 THEN 1 ELSE 0 END) as creatorUsers,
-                SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) as newToday
-            FROM users
-        `);
-
-        const [postStats] = await pool.query(`
-            SELECT 
-                COUNT(*) as totalPosts,
-                SUM(likes_count) as totalLikes,
-                SUM(comments_count) as totalComments
-            FROM posts
-            WHERE is_active = 1
-        `);
+        const totalUsers = await User.countDocuments();
+        const totalPosts = await Post.countDocuments();
+        const totalVideos = await Video.countDocuments();
+        
+        // Get today's date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const newUsersToday = await User.countDocuments({
+            created_at: { $gte: today }
+        });
+        
+        const newPostsToday = await Post.countDocuments({
+            created_at: { $gte: today }
+        });
+        
+        // Get verified users (if you have is_verified field)
+        const verifiedUsers = await User.countDocuments({ is_verified: true });
+        
+        // Get creator users (if you have is_creator field)
+        const creatorUsers = await User.countDocuments({ is_creator: true });
+        
+        // Get total likes from posts
+        const posts = await Post.find();
+        const totalLikes = posts.reduce((sum, post) => sum + (post.likes_count || 0), 0);
+        const totalComments = posts.reduce((sum, post) => sum + (post.comments_count || 0), 0);
 
         res.json({
-            users: userStats[0],
-            posts: postStats[0]
+            success: true,
+            stats: {
+                users: {
+                    total: totalUsers,
+                    verified: verifiedUsers,
+                    creators: creatorUsers,
+                    newToday: newUsersToday
+                },
+                posts: {
+                    total: totalPosts,
+                    totalLikes: totalLikes,
+                    totalComments: totalComments,
+                    newToday: newPostsToday
+                },
+                videos: {
+                    total: totalVideos
+                }
+            }
         });
     } catch (error) {
         console.error('Error fetching stats:', error);
@@ -67,56 +91,94 @@ router.get('/users', verifyAdminToken, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
+        const skip = (page - 1) * limit;
         const { search } = req.query;
 
-        let whereConditions = [];
-        let queryParams = [];
-
+        let query = {};
         if (search) {
-            whereConditions.push('(username LIKE ? OR email LIKE ? OR full_name LIKE ?)');
-            queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+            query = {
+                $or: [
+                    { username: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } },
+                    { full_name: { $regex: search, $options: 'i' } }
+                ]
+            };
         }
 
-        const whereClause = whereConditions.length > 0 
-            ? 'WHERE ' + whereConditions.join(' AND ')
-            : '';
+        const users = await User.find(query)
+            .select('-password')
+            .sort({ created_at: -1 })
+            .skip(skip)
+            .limit(limit);
 
-        const [users] = await pool.query(`
-            SELECT 
-                u.id,
-                u.username,
-                u.email,
-                u.full_name as name,
-                u.bio,
-                u.avatar,
-                u.is_verified,
-                u.is_creator,
-                u.role,
-                u.followers_count,
-                u.following_count,
-                u.posts_count,
-                u.created_at as createdAt
-            FROM users u
-            ${whereClause}
-            ORDER BY u.created_at DESC
-            LIMIT ? OFFSET ?
-        `, [...queryParams, limit, offset]);
-
-        const [countResult] = await pool.query(`
-            SELECT COUNT(*) as total 
-            FROM users u
-            ${whereClause}
-        `, queryParams);
+        const total = await User.countDocuments(query);
 
         res.json({
+            success: true,
             users,
-            total: countResult[0].total,
-            totalPages: Math.ceil(countResult[0].total / limit),
+            total,
+            totalPages: Math.ceil(total / limit),
             currentPage: page
         });
     } catch (error) {
         console.error('Error fetching users:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Get single user
+router.get('/users/:userId', verifyAdminToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json({ success: true, user });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Update user
+router.put('/users/:userId', verifyAdminToken, async (req, res) => {
+    try {
+        const { full_name, bio, is_verified, is_creator, role } = req.body;
+        
+        const user = await User.findByIdAndUpdate(
+            req.params.userId,
+            { full_name, bio, is_verified, is_creator, role },
+            { new: true, runValidators: true }
+        ).select('-password');
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        res.json({ success: true, user });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Delete user
+router.delete('/users/:userId', verifyAdminToken, async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.params.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // Delete user's posts
+        await Post.deleteMany({ user: req.params.userId });
+        
+        // Delete user's videos
+        await Video.deleteMany({ user: req.params.userId });
+        
+        res.json({ 
+            success: true, 
+            message: 'User and all associated content deleted successfully' 
+        });
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 });
@@ -126,46 +188,29 @@ router.get('/posts', verifyAdminToken, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
+        const skip = (page - 1) * limit;
         const { search } = req.query;
 
-        let whereConditions = ['p.is_active = 1'];
-        let queryParams = [];
-
+        let query = {};
         if (search) {
-            whereConditions.push('(p.caption LIKE ? OR p.hashtags LIKE ?)');
-            queryParams.push(`%${search}%`, `%${search}%`);
+            query = {
+                content: { $regex: search, $options: 'i' }
+            };
         }
 
-        const whereClause = 'WHERE ' + whereConditions.join(' AND ');
-        
-        const [posts] = await pool.query(`
-            SELECT 
-                p.id,
-                p.caption,
-                p.media_url,
-                p.media_type,
-                p.likes_count,
-                p.comments_count,
-                p.created_at as createdAt,
-                u.username
-            FROM posts p
-            JOIN users u ON p.user_id = u.id
-            ${whereClause}
-            ORDER BY p.created_at DESC
-            LIMIT ? OFFSET ?
-        `, [...queryParams, limit, offset]);
+        const posts = await Post.find(query)
+            .populate('user', 'username full_name email avatar')
+            .sort({ created_at: -1 })
+            .skip(skip)
+            .limit(limit);
 
-        const [countResult] = await pool.query(`
-            SELECT COUNT(*) as total 
-            FROM posts p
-            ${whereClause}
-        `, queryParams);
+        const total = await Post.countDocuments(query);
 
         res.json({
+            success: true,
             posts,
-            total: countResult[0].total,
-            totalPages: Math.ceil(countResult[0].total / limit),
+            total,
+            totalPages: Math.ceil(total / limit),
             currentPage: page
         });
     } catch (error) {
@@ -174,50 +219,60 @@ router.get('/posts', verifyAdminToken, async (req, res) => {
     }
 });
 
-// Delete post
-router.delete('/posts/:postId', verifyAdminToken, async (req, res) => {
+// Get single post
+router.get('/posts/:postId', verifyAdminToken, async (req, res) => {
     try {
-        const { postId } = req.params;
-        await pool.query('UPDATE posts SET is_active = 0 WHERE id = ?', [postId]);
-        res.json({ message: 'Post deleted successfully' });
+        const post = await Post.findById(req.params.postId)
+            .populate('user', 'username full_name email avatar');
+        
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+        
+        res.json({ success: true, post });
     } catch (error) {
-        console.error('Error deleting post:', error);
         res.status(500).json({ message: error.message });
     }
 });
 
-// Get comments
+// Delete post
+router.delete('/posts/:postId', verifyAdminToken, async (req, res) => {
+    try {
+        const post = await Post.findByIdAndDelete(req.params.postId);
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+        
+        res.json({ success: true, message: 'Post deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Get comments (if you have a Comment model)
 router.get('/comments', verifyAdminToken, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
-
-        const [comments] = await pool.query(`
-            SELECT 
-                c.id,
-                c.comment,
-                c.created_at as createdAt,
-                u.username,
-                p.caption as post_caption
-            FROM comments c
-            JOIN users u ON c.user_id = u.id
-            JOIN posts p ON c.post_id = p.id
-            WHERE c.is_active = 1
-            ORDER BY c.created_at DESC
-            LIMIT ? OFFSET ?
-        `, [limit, offset]);
-
-        const [countResult] = await pool.query(`
-            SELECT COUNT(*) as total 
-            FROM comments c
-            WHERE is_active = 1
-        `);
-
+        const skip = (page - 1) * limit;
+        
+        // If you have a Comment model, import it at the top
+        const Comment = require('../models/commentModel');
+        
+        const comments = await Comment.find()
+            .populate('user', 'username full_name avatar')
+            .populate('post', 'content')
+            .sort({ created_at: -1 })
+            .skip(skip)
+            .limit(limit);
+        
+        const total = await Comment.countDocuments();
+        
         res.json({
+            success: true,
             comments,
-            total: countResult[0].total,
-            totalPages: Math.ceil(countResult[0].total / limit),
+            total,
+            totalPages: Math.ceil(total / limit),
             currentPage: page
         });
     } catch (error) {
@@ -229,51 +284,14 @@ router.get('/comments', verifyAdminToken, async (req, res) => {
 // Delete comment
 router.delete('/comments/:commentId', verifyAdminToken, async (req, res) => {
     try {
-        const { commentId } = req.params;
-        await pool.query('UPDATE comments SET is_active = 0 WHERE id = ?', [commentId]);
-        res.json({ message: 'Comment deleted successfully' });
+        const Comment = require('../models/commentModel');
+        const comment = await Comment.findByIdAndDelete(req.params.commentId);
+        if (!comment) {
+            return res.status(404).json({ message: 'Comment not found' });
+        }
+        
+        res.json({ success: true, message: 'Comment deleted successfully' });
     } catch (error) {
-        console.error('Error deleting comment:', error);
-        res.status(500).json({ message: error.message });
-    }
-});
-
-// Get logs
-router.get('/logs', verifyAdminToken, async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
-        const offset = (page - 1) * limit;
-
-        const [logs] = await pool.query(`
-            SELECT 
-                l.id,
-                l.action,
-                l.user_id,
-                l.details,
-                l.ip_address,
-                l.created_at as timestamp,
-                u.username,
-                u.full_name
-            FROM system_logs l
-            LEFT JOIN users u ON l.user_id = u.id
-            ORDER BY l.created_at DESC
-            LIMIT ? OFFSET ?
-        `, [limit, offset]);
-
-        const [countResult] = await pool.query(`
-            SELECT COUNT(*) as total 
-            FROM system_logs
-        `);
-
-        res.json({
-            logs,
-            total: countResult[0].total,
-            totalPages: Math.ceil(countResult[0].total / limit),
-            currentPage: page
-        });
-    } catch (error) {
-        console.error('Error fetching logs:', error);
         res.status(500).json({ message: error.message });
     }
 });
@@ -281,25 +299,131 @@ router.get('/logs', verifyAdminToken, async (req, res) => {
 // Analytics
 router.get('/analytics', verifyAdminToken, async (req, res) => {
     try {
-        const [topCreators] = await pool.query(`
-            SELECT 
-                u.id,
-                u.username,
-                u.full_name,
-                COUNT(p.id) as total_posts,
-                SUM(p.likes_count) as total_likes
-            FROM users u
-            JOIN posts p ON u.id = p.user_id
-            WHERE p.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-            GROUP BY u.id
-            ORDER BY total_likes DESC
-            LIMIT 10
-        `);
+        // Top creators (users with most posts)
+        const topCreators = await Post.aggregate([
+            {
+                $group: {
+                    _id: '$user',
+                    totalPosts: { $sum: 1 },
+                    totalLikes: { $sum: '$likes_count' }
+                }
+            },
+            { $sort: { totalLikes: -1 } },
+            { $limit: 10 },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'user'
+                }
+            },
+            { $unwind: '$user' },
+            {
+                $project: {
+                    _id: 1,
+                    username: '$user.username',
+                    full_name: '$user.full_name',
+                    totalPosts: 1,
+                    totalLikes: 1
+                }
+            }
+        ]);
+        
+        // User growth over last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const userGrowth = await User.aggregate([
+            {
+                $match: {
+                    created_at: { $gte: thirtyDaysAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: '$created_at' },
+                        month: { $month: '$created_at' },
+                        day: { $dayOfMonth: '$created_at' }
+                    },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+        ]);
+        
+        // Posts per day (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        const dailyPosts = await Post.aggregate([
+            {
+                $match: {
+                    created_at: { $gte: sevenDaysAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: '$created_at' },
+                        month: { $month: '$created_at' },
+                        day: { $dayOfMonth: '$created_at' }
+                    },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+        ]);
 
-        res.json({ topCreators });
+        res.json({
+            success: true,
+            analytics: {
+                topCreators,
+                userGrowth,
+                dailyPosts
+            }
+        });
     } catch (error) {
         console.error('Error fetching analytics:', error);
         res.status(500).json({ message: error.message });
+    }
+});
+
+// System logs (optional - if you have logs collection)
+router.get('/logs', verifyAdminToken, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+        
+        // If you have a SystemLog model
+        const SystemLog = require('../models/SystemLog');
+        
+        const logs = await SystemLog.find()
+            .populate('user', 'username full_name')
+            .sort({ created_at: -1 })
+            .skip(skip)
+            .limit(limit);
+        
+        const total = await SystemLog.countDocuments();
+        
+        res.json({
+            success: true,
+            logs,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+    } catch (error) {
+        // Return empty logs if model doesn't exist
+        res.json({
+            success: true,
+            logs: [],
+            total: 0,
+            totalPages: 0,
+            currentPage: 1
+        });
     }
 });
 

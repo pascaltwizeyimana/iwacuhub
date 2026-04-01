@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
-import { api } from '../services/api';
 import { 
   FiSearch, FiUser, FiImage, FiLoader, FiX, 
   FiHeart, FiMessageCircle, FiMapPin, FiTrendingUp
@@ -27,6 +26,9 @@ export default function Search() {
   const [searching, setSearching] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
   const [trending, setTrending] = useState([]);
+  const [error, setError] = useState(null);
+
+  const API_URL = 'http://localhost:5000/api';
 
   // Load trending hashtags on mount
   useEffect(() => {
@@ -42,14 +44,23 @@ export default function Search() {
       setSearchQuery(q);
       performSearch(q);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
 
   const loadTrending = async () => {
     try {
-      const response = await api.get('/search/trending');
-      if (response.data.success) {
-        setTrending(response.data.hashtags);
+      const response = await fetch(`${API_URL}/hashtags/trending`);
+      const data = await response.json();
+      if (data.success) {
+        setTrending(data.hashtags);
+      } else {
+        // Fallback data
+        setTrending([
+          { name: 'VisitRwanda', posts_count: 12500 },
+          { name: 'KigaliCity', posts_count: 8200 },
+          { name: 'GorillaTrekking', posts_count: 5800 },
+          { name: 'RwandanCoffee', posts_count: 3900 },
+          { name: 'Umuganda', posts_count: 4200 }
+        ]);
       }
     } catch (error) {
       console.error('Failed to load trending:', error);
@@ -75,10 +86,6 @@ export default function Search() {
     const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 10);
     setRecentSearches(updated);
     localStorage.setItem('recent_searches', JSON.stringify(updated));
-    
-    if (user) {
-      api.post('/search/recent', { query, userId: user.id }).catch(console.error);
-    }
   };
 
   const performSearch = useCallback(async (query) => {
@@ -88,20 +95,28 @@ export default function Search() {
     }
     
     setSearching(true);
+    setError(null);
+    
     try {
-      const response = await api.get(`/search?q=${encodeURIComponent(query)}`);
-      if (response.data.success) {
+      const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      
+      if (data.success) {
         setSearchResults({
-          users: response.data.users || [],
-          posts: response.data.posts || [],
-          hashtags: response.data.hashtags || []
+          users: data.users || [],
+          posts: data.posts || [],
+          hashtags: data.hashtags || []
         });
         saveRecentSearch(query);
+      } else {
+        setError(data.error || 'Search failed');
       }
     } catch (error) {
       console.error('Search error:', error);
+      setError('Failed to connect to server');
+    } finally {
+      setSearching(false);
     }
-    setSearching(false);
   }, []);
 
   const handleSearch = (e) => {
@@ -125,12 +140,14 @@ export default function Search() {
   };
 
   const formatNumber = (num) => {
+    if (!num) return '0';
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
   };
 
   const timeAgo = (date) => {
+    if (!date) return 'recent';
     const seconds = Math.floor((new Date() - new Date(date)) / 1000);
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
@@ -189,11 +206,17 @@ export default function Search() {
             <button
               type="submit"
               disabled={searching}
-              className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-green-500 to-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-yellow-400 to-green-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {searching ? 'Searching...' : 'Search'}
+              {searching ? <FiLoader className="animate-spin" /> : 'Search'}
             </button>
           </form>
+          
+          {error && (
+            <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl text-sm">
+              {error}
+            </div>
+          )}
         </motion.div>
 
         {/* Tabs */}
@@ -236,29 +259,29 @@ export default function Search() {
                 className="mb-8"
               >
                 <h2 className={`text-xl font-bold ${currentTheme.text} mb-4 flex items-center gap-2`}>
-                  <FiUser className="text-green-500" /> Users
+                  <FiUser className="text-green-500" /> Users ({searchResults.users.length})
                 </h2>
                 <div className="space-y-3">
                   {searchResults.users.map((userResult, index) => (
                     <motion.div
-                      key={userResult.id}
+                      key={userResult._id}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
                       className={`${currentTheme.card} rounded-2xl shadow-lg p-4 hover:shadow-xl transition-all cursor-pointer`}
-                      onClick={() => navigate(`/profile/${userResult.id}`)}
+                      onClick={() => navigate(`/profile/${userResult._id}`)}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
-                            <span className="text-xl">{userResult.avatar || userResult.username?.[0]?.toUpperCase()}</span>
+                            <span className="text-xl font-bold text-white">{userResult.username?.[0]?.toUpperCase() || '👤'}</span>
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <p className={`font-semibold ${currentTheme.text} text-lg`}>
                                 {userResult.full_name || userResult.username}
                               </p>
-                              {userResult.is_verified && (
+                              {userResult.verified && (
                                 <span className="text-blue-500 text-xs">✓</span>
                               )}
                             </div>
@@ -284,39 +307,48 @@ export default function Search() {
                 className="mb-8"
               >
                 <h2 className={`text-xl font-bold ${currentTheme.text} mb-4 flex items-center gap-2`}>
-                  <FiImage className="text-green-500" /> Posts
+                  <FiImage className="text-green-500" /> Posts ({searchResults.posts.length})
                 </h2>
                 <div className="space-y-4">
                   {searchResults.posts.map((post, index) => (
                     <motion.div
-                      key={post.id}
+                      key={post._id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                       className={`${currentTheme.card} rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer`}
-                      onClick={() => navigate(`/post/${post.id}`)}
+                      onClick={() => navigate(`/post/${post._id}`)}
                     >
                       <div className="flex p-4 gap-4">
-                        <img 
-                          src={post.media_url} 
-                          alt={post.caption} 
-                          className="w-24 h-24 rounded-xl object-cover"
-                        />
+                        {post.media_url && (
+                          <img 
+                            src={post.media_url} 
+                            alt={post.caption} 
+                            className="w-24 h-24 rounded-xl object-cover"
+                          />
+                        )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-green-500 flex items-center justify-center">
-                              <span className="text-sm">{post.avatar || post.username?.[0]?.toUpperCase()}</span>
+                              <span className="text-sm font-bold text-white">{post.user?.username?.[0]?.toUpperCase() || '👤'}</span>
                             </div>
                             <div>
                               <p className={`font-semibold ${currentTheme.text} text-sm`}>
-                                {post.full_name || post.username}
+                                {post.user?.full_name || post.user?.username}
                               </p>
                               <p className="text-xs text-gray-500">{timeAgo(post.created_at)}</p>
                             </div>
                           </div>
                           <p className={`${currentTheme.text} text-sm line-clamp-2 mb-2`}>
-                            {post.caption || 'No caption'}
+                            {post.content || post.caption || 'No caption'}
                           </p>
+                          {post.hashtags && post.hashtags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {post.hashtags.slice(0, 3).map(tag => (
+                                <span key={tag} className="text-xs text-blue-500">#{tag}</span>
+                              ))}
+                            </div>
+                          )}
                           <div className="flex items-center gap-4 text-xs text-gray-500">
                             <div className="flex items-center gap-1">
                               <FiHeart className="w-3 h-3" />
@@ -348,7 +380,7 @@ export default function Search() {
                 animate={{ opacity: 1, y: 0 }}
               >
                 <h2 className={`text-xl font-bold ${currentTheme.text} mb-4 flex items-center gap-2`}>
-                  <FaHashtag className="text-green-500" /> Hashtags
+                  <FaHashtag className="text-green-500" /> Hashtags ({searchResults.hashtags.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {searchResults.hashtags.map((tag, index) => (
@@ -370,9 +402,7 @@ export default function Search() {
                           </p>
                           <p className="text-sm text-gray-500">{formatNumber(tag.posts_count)} posts</p>
                         </div>
-                        <button className="text-blue-500 text-sm font-semibold hover:underline">
-                          Explore
-                        </button>
+                        <span className="text-blue-500 text-sm font-semibold">Explore →</span>
                       </div>
                     </motion.button>
                   ))}
@@ -413,6 +443,7 @@ export default function Search() {
                       onClick={() => {
                         setSearchQuery(query);
                         performSearch(query);
+                        navigate(`/search?q=${encodeURIComponent(query)}`, { replace: true });
                       }}
                       className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                     >
@@ -441,12 +472,13 @@ export default function Search() {
                 <FiTrendingUp className="text-orange-500" /> Trending in Rwanda
               </h2>
               <div className="space-y-3">
-                {trending.map((tag, i) => (
+                {trending.slice(0, 10).map((tag, i) => (
                   <button
                     key={i}
                     onClick={() => {
                       setSearchQuery(`#${tag.name}`);
                       performSearch(`#${tag.name}`);
+                      navigate(`/search?q=%23${encodeURIComponent(tag.name)}`, { replace: true });
                     }}
                     className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                   >
@@ -456,7 +488,7 @@ export default function Search() {
                       </p>
                       <p className="text-xs text-gray-500">{formatNumber(tag.posts_count)} posts</p>
                     </div>
-                    {i < 3 && <span className="text-red-500 text-sm">🔥 Hot</span>}
+                    {i < 3 && <span className="text-red-500 text-sm animate-pulse">🔥 Hot</span>}
                   </button>
                 ))}
               </div>

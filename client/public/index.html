@@ -1,58 +1,20 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#3B82F6" />
-    <meta name="description" content="IwacuHub - Rwanda's Premier Social Platform" />
-    <title>IwacuHub | Rwanda's Social Platform</title>
-    <style>
-        /* Initial loading animation */
-        .initial-loader {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, #FCD34D, #22C55E, #3B82F6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-        }
-        
-        .loader-content {
-            text-align: center;
-        }
-        
-        .rwanda-flag {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, #FCD34D, #22C55E, #3B82F6);
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        .float-animation {
-            animation: float 3s ease-in-out infinite;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="IwacuHub - Rwanda's Digital Community" />
+  
+  <!-- ADD TAILWIND CDN HERE -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <title>IwacuHub</title>
 </head>
 <body>
-    <div id="root"></div>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
 </body>
 </html>

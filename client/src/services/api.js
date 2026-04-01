@@ -1,36 +1,51 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+// ✅ Correct backend URL (matches your server)
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
+// ✅ Create axios instance
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,
+  timeout: 15000,
 });
 
-// Add token to requests
+// ✅ Attach token to every request
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (err) {
+      console.error('Token error:', err);
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor
+// ✅ Handle responses safely (NO app crash)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API ERROR:', error?.response || error.message);
+
+    // 🔐 Handle unauthorized (optional)
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+
+      // Avoid redirect loop crash
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
+
+    // ⚠️ IMPORTANT: Always return error safely
     return Promise.reject(error);
   }
 );
