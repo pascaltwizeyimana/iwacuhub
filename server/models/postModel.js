@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+const mongoose = require('mongoose'); // <--- THIS WAS MISSING
 
-const PostSchema = new mongoose.Schema({
+const postSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -8,8 +8,7 @@ const PostSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: true,
-    maxlength: 500
+    required: true
   },
   media_url: {
     type: String,
@@ -20,29 +19,8 @@ const PostSchema = new mongoose.Schema({
     enum: ['image', 'video', 'none'],
     default: 'none'
   },
-  likes: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  comments: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    text: {
-      type: String,
-      required: true,
-      maxlength: 200
-    },
-    created_at: {
-      type: Date,
-      default: Date.now
-    }
-  }],
   hashtags: [{
-    type: String,
-    lowercase: true,
-    trim: true
+    type: String
   }],
   location: {
     type: String,
@@ -50,7 +28,7 @@ const PostSchema = new mongoose.Schema({
   },
   visibility: {
     type: String,
-    enum: ['public', 'followers', 'private'],
+    enum: ['public', 'private', 'friends'],
     default: 'public'
   },
   likes_count: {
@@ -64,15 +42,12 @@ const PostSchema = new mongoose.Schema({
   created_at: {
     type: Date,
     default: Date.now
-  },
-  updated_at: {
-    type: Date,
-    default: Date.now
   }
 });
 
-// Indexes for better performance
-PostSchema.index({ content: 'text', hashtags: 1 });
-PostSchema.index({ user: 1, created_at: -1 });
+// IMPORTANT: Do not use 'text' for hashtags as it causes errors with arrays.
+// Use 1 for standard index and 'text' for content only.
+postSchema.index({ content: 'text' }); 
+postSchema.index({ hashtags: 1 }); 
 
-module.exports = mongoose.model('Post', PostSchema);
+module.exports = mongoose.model('Post', postSchema);

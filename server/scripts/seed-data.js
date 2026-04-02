@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
+const path = require('path');
 
-dotenv.config();
+// Load env from one level up (since this is in /scripts)
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 // Import models
 const User = require('../models/userModel');
@@ -126,17 +128,29 @@ const samplePosts = [
 
 async function seedData() {
   try {
+    if (!process.env.MONGODB_URI) {
+       throw new Error("MONGODB_URI is not defined in .env file");
+    }
+
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ Connected to MongoDB');
 
-    // Clear existing data
+    // 1. Clear existing data
     await User.deleteMany({});
     await Post.deleteMany({});
     console.log('✅ Cleared existing data');
 
-    // Hash passwords and create users
+    // 2. IMPORTANT: DROP problematic indexes
+    try {
+        await Post.collection.dropIndexes();
+        console.log('✅ Dropped old text indexes to prevent array errors');
+    } catch (e) {
+        console.log('💡 No existing indexes to drop');
+    }
+
+    // 3. Hash passwords and create users
     const salt = await bcrypt.genSalt(10);
-    const users = [];
+    const createdUsers = [];
     
     for (const userData of sampleUsers) {
       const hashedPassword = await bcrypt.hash(userData.password, salt);
@@ -146,13 +160,14 @@ async function seedData() {
         created_at: new Date()
       });
       await user.save();
-      users.push(user);
+      createdUsers.push(user);
       console.log(`✅ Created user: ${user.username}`);
     }
 
-    // Create posts with random users
+    // 4. Create posts with links to random users
     for (let i = 0; i < samplePosts.length; i++) {
-      const randomUser = users[Math.floor(Math.random() * users.length)];
+      const randomUser = createdUsers[Math.floor(Math.random() * createdUsers.length)];
+      
       const post = new Post({
         user: randomUser._id,
         content: samplePosts[i].content,
@@ -161,23 +176,23 @@ async function seedData() {
         visibility: 'public',
         created_at: new Date()
       });
+      
       await post.save();
       
-      // Update user's post count
-      randomUser.posts_count += 1;
-      await randomUser.save();
+      // Update the user's post count (if field exists in your User model)
+      if (randomUser.posts_count !== undefined) {
+          await User.findByIdAndUpdate(randomUser._id, { $inc: { posts_count: 1 } });
+      }
       
-      console.log(`✅ Created post ${i + 1}: ${samplePosts[i].content.substring(0, 50)}...`);
+      console.log(`✅ Created post ${i + 1}: ${samplePosts[i].content.substring(0, 30)}...`);
     }
 
-    console.log('\n🎉 Data seeding completed!');
-    console.log(`📊 Statistics:`);
-    console.log(`   - Users: ${users.length}`);
-    console.log(`   - Posts: ${samplePosts.length}`);
-    console.log(`   - Hashtags: Unique tags available for search`);
+    console.log('\n🎉 Data seeding completed successfully!');
+    console.log(`📊 Stats: ${createdUsers.length} Users, ${samplePosts.length} Posts created.`);
     
     await mongoose.disconnect();
     console.log('\n✅ Disconnected from MongoDB');
+    process.exit(0);
 
   } catch (error) {
     console.error('❌ Error seeding data:', error);
